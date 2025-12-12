@@ -1,0 +1,114 @@
+// 全局样式
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background-color: #f5f7fa;
+}
+
+// 主题变量
+:root {
+  --primary-color: #409EFF;
+  --success-color: #67C23A;
+  --warning-color: #E6A23C;
+  --danger-color: #F56C6C;
+  --info-color: #909399;
+  --bg-color: #f5f7fa;
+  --header-height: 60px;
+}
+
+// 状态颜色
+.status-online, .status-running, .status-healthy {
+  color: var(--success-color);
+}
+
+.status-offline, .status-stopped, .status-unhealthy {
+  color: var(--danger-color);
+}
+
+.status-maintenance, .status-error {
+  color: var(--warning-color);
+}
+
+// 环境标签
+.env-tag {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #fff;
+
+  &.prod { background-color: #F56C6C; }
+  &.staging { background-color: #E6A23C; }
+  &.test { background-color: #67C23A; }
+  &.dev { background-color: #909399; }
+}
+
+// 树形缩进
+.tree-indent {
+  display: inline-block;
+  width: 24px;
+}
+
+.tree-line {
+  position: relative;
+
+  &::before {
+    content: '';
+    position: absolute;
+    left: -12px;
+    top: 0;
+    height: 100%;
+    border-left: 1px dashed #dcdfe6;
+  }
+}
+
+// 可复制文本
+.copyable {
+  cursor: pointer;
+
+  &:hover {
+    color: var(--primary-color);
+  }
+}
+
+// 卡片阴影
+.card-shadow {
+  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+}
+
+// 过渡动画
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.3s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+// Element Plus 覆盖
+.el-table {
+  --el-table-header-bg-color: #fafafa;
+}
+
+.el-drawer__header {
+  margin-bottom: 0;
+  padding: 16px 20px;
+  border-bottom: 1px solid #ebeef5;
+}
+
+.el-drawer__body {
+  padding: 20px;
+}
+
+// 响应式
+@media (max-width: 768px) {
+  .hide-on-mobile {
+    display: none !important;
+  }
+}
