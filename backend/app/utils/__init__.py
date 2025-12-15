@@ -128,3 +128,48 @@ def paginate_query(query, page=1, page_size=20, max_page_size=100):
 def get_request_json():
     """获取请求JSON数据"""
     return request.get_json() or {}
+
+
+def validate_json(schema, data=None):
+    """
+    使用Marshmallow Schema验证JSON数据
+
+    Args:
+        schema: Marshmallow Schema实例
+        data: 要验证的数据，如果为None则从request.get_json()获取
+
+    Returns:
+        tuple: (validated_data, errors)
+            - 如果验证成功: (validated_data, None)
+            - 如果验证失败: (None, errors_dict)
+    """
+    from marshmallow import ValidationError
+
+    if data is None:
+        data = request.get_json() or {}
+
+    try:
+        validated_data = schema.load(data)
+        return validated_data, None
+    except ValidationError as e:
+        return None, e.messages
+
+
+def validate_or_error(schema, data=None):
+    """
+    验证JSON数据，失败时返回错误响应
+
+    Args:
+        schema: Marshmallow Schema实例
+        data: 要验证的数据
+
+    Returns:
+        tuple: (validated_data, error_response_or_none)
+            - 如果验证成功: (validated_data, None)
+            - 如果验证失败: (None, error_response) - 可直接返回给客户端
+    """
+    validated_data, errors = validate_json(schema, data)
+    if errors:
+        return None, error_response(f'参数验证失败: {errors}', 400, 400)
+    return validated_data, None
+

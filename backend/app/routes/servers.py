@@ -5,8 +5,9 @@ from app.models import Server, AuditLog
 from app.extensions import db
 from app.utils import (
     api_response, error_response, get_current_user,
-    admin_required, paginate_query, get_request_json
+    admin_required, paginate_query, get_request_json, validate_or_error
 )
+from app.schemas import server_create_schema, server_update_schema
 
 servers_bp = Blueprint('servers', __name__)
 
@@ -71,14 +72,32 @@ def get_servers_tree():
         server_data = server.to_dict()
 
         if expand_level >= 2:
-            server_data['containers'] = []
+            # 为树形展示准备 children 数组
+            children = []
+
+            # 添加容器到 children
             for container in server.containers:
                 container_data = container.to_dict()
-                if expand_level >= 3:
-                    container_data['services'] = [s.to_dict() for s in container.services]
-                server_data['containers'].append(container_data)
+                container_data['_type'] = 'container'  # 标记类型
 
-            server_data['gpus'] = [g.to_dict() for g in server.gpus]
+                if expand_level >= 3:
+                    # 将服务作为容器的子节点
+                    container_data['children'] = []
+                    for service in container.services:
+                        service_data = service.to_dict()
+                        service_data['_type'] = 'service'  # 标记类型
+                        container_data['children'].append(service_data)
+
+                children.append(container_data)
+
+            # 添加 GPU 到 children（与容器平级）
+            for gpu in server.gpus:
+                gpu_data = gpu.to_dict()
+                gpu_data['_type'] = 'gpu'  # 标记类型
+                children.append(gpu_data)
+
+            server_data['children'] = children
+            server_data['hasChildren'] = len(children) > 0
 
         tree_data.append(server_data)
 
@@ -99,12 +118,11 @@ def get_server(id):
 def create_server():
     """创建服务器"""
     user = get_current_user()
-    data = get_request_json()
 
-    required_fields = ['name', 'datacenter_id', 'environment_id', 'internal_ip']
-    for field in required_fields:
-        if not data.get(field):
-            return error_response(f'{field} 不能为空', 422, 422)
+    # 验证输入数据
+    data, error = validate_or_error(server_create_schema)
+    if error:
+        return error
 
     server = Server(
         name=data['name'],
@@ -143,7 +161,11 @@ def update_server(id):
     """更新服务器"""
     user = get_current_user()
     server = Server.query.get_or_404(id)
-    data = get_request_json()
+
+    # 验证输入数据
+    data, error = validate_or_error(server_update_schema)
+    if error:
+        return error
 
     old_data = server.to_dict()
     changes = {}

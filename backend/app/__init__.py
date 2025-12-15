@@ -2,7 +2,8 @@
 import os
 from flask import Flask, jsonify
 from config import config
-from app.extensions import db, migrate, jwt, cors
+from app.extensions import db, migrate, jwt, cors, ma
+from marshmallow import ValidationError
 
 
 def create_app(config_name=None):
@@ -34,6 +35,7 @@ def register_extensions(app):
     migrate.init_app(app, db)
     jwt.init_app(app)
     cors.init_app(app, origins=app.config['CORS_ORIGINS'], supports_credentials=True)
+    ma.init_app(app)
 
 
 def register_blueprints(app):
@@ -65,6 +67,11 @@ def register_blueprints(app):
 
 def register_error_handlers(app):
     """注册全局错误处理"""
+    @app.errorhandler(ValidationError)
+    def handle_validation_error(e):
+        """处理Marshmallow验证错误"""
+        return jsonify(code=400, message='参数验证失败', data={'errors': e.messages}), 400
+
     @app.errorhandler(400)
     def bad_request(e):
         return jsonify(code=400, message='请求参数错误', data=None), 400

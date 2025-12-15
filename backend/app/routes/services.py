@@ -5,8 +5,9 @@ from app.models import Service, AuditLog
 from app.extensions import db
 from app.utils import (
     api_response, error_response, get_current_user,
-    paginate_query, get_request_json
+    paginate_query, get_request_json, validate_or_error
 )
+from app.schemas import service_create_schema, service_update_schema
 
 services_bp = Blueprint('services', __name__)
 
@@ -52,12 +53,11 @@ def get_service(id):
 def create_service():
     """创建服务"""
     user = get_current_user()
-    data = get_request_json()
 
-    required_fields = ['name', 'container_id']
-    for field in required_fields:
-        if not data.get(field):
-            return error_response(f'{field} 不能为空', 422, 422)
+    # 验证输入数据
+    data, error = validate_or_error(service_create_schema)
+    if error:
+        return error
 
     service = Service(
         name=data['name'],

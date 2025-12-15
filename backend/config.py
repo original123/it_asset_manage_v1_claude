@@ -1,14 +1,20 @@
 """Flask应用配置"""
 import os
 from datetime import timedelta
+from dotenv import load_dotenv
+
+# 加载环境变量
+load_dotenv()
+
 
 class Config:
     """基础配置"""
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-secret-key-change-in-production'
 
-    # MySQL数据库配置
+    # MySQL数据库配置 - 必须通过环境变量设置
+    # 后备值使用SQLite用于本地开发（不含生产凭据）
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or \
-        'mysql+pymysql://t7_mysql:b36pCsr2nsFKKZ8M@49.232.241.242:3306/it_asset_manager?charset=utf8mb4'
+        'sqlite:///instance/it_assets_dev.db'
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_ENGINE_OPTIONS = {
         'pool_pre_ping': True,

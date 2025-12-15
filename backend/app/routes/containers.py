@@ -5,8 +5,9 @@ from app.models import Container, PortMapping, AuditLog
 from app.extensions import db
 from app.utils import (
     api_response, error_response, get_current_user,
-    paginate_query, get_request_json
+    paginate_query, get_request_json, validate_or_error
 )
+from app.schemas import container_create_schema, container_update_schema
 
 containers_bp = Blueprint('containers', __name__)
 
@@ -55,12 +56,11 @@ def get_container(id):
 def create_container():
     """创建容器"""
     user = get_current_user()
-    data = get_request_json()
 
-    required_fields = ['name', 'server_id']
-    for field in required_fields:
-        if not data.get(field):
-            return error_response(f'{field} 不能为空', 422, 422)
+    # 验证输入数据
+    data, error = validate_or_error(container_create_schema)
+    if error:
+        return error
 
     container = Container(
         name=data['name'],

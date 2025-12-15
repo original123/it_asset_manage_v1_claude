@@ -3,7 +3,7 @@
     :model-value="modelValue"
     @update:model-value="$emit('update:modelValue', $event)"
     title="服务器详情"
-    size="480px"
+    size="520px"
   >
     <template v-if="server">
       <div class="server-detail">
@@ -92,55 +92,154 @@
         </div>
 
         <!-- 容器列表 -->
-        <div class="detail-section" v-if="server.containers?.length">
-          <h4>容器 ({{ server.containers.length }})</h4>
-          <div class="container-list">
+        <div class="detail-section">
+          <div class="section-header">
+            <h4>容器 ({{ server.containers?.length || 0 }})</h4>
+            <el-button size="small" type="primary" plain @click="showAddContainer">
+              <el-icon><Plus /></el-icon> 添加
+            </el-button>
+          </div>
+          <div class="container-list" v-if="server.containers?.length">
             <div
               v-for="container in server.containers"
               :key="container.id"
               class="container-item"
             >
-              <div class="container-name">
-                <el-icon><Box /></el-icon>
-                {{ container.name }}
+              <div class="container-header">
+                <div class="container-name">
+                  <el-icon><Box /></el-icon>
+                  {{ container.name }}
+                </div>
+                <div class="container-actions">
+                  <el-tag :type="getStatusType(container.status)" size="small">
+                    {{ container.status }}
+                  </el-tag>
+                  <el-button size="small" text @click="showAddService(container)">
+                    <el-icon><Plus /></el-icon>服务
+                  </el-button>
+                </div>
               </div>
-              <el-tag :type="getStatusType(container.status)" size="small">
-                {{ container.status }}
-              </el-tag>
+              <!-- 服务列表 -->
+              <div class="services-list" v-if="container.services?.length">
+                <div
+                  v-for="service in container.services"
+                  :key="service.id"
+                  class="service-item"
+                >
+                  <div class="service-info">
+                    <el-icon :style="{ color: getServiceTypeColor(service.service_type) }"><Promotion /></el-icon>
+                    <span class="service-name">{{ service.name }}</span>
+                    <span class="service-port" v-if="service.port">:{{ service.port }}</span>
+                  </div>
+                  <div class="service-actions">
+                    <el-tag
+                      :type="service.status === 'healthy' ? 'success' : 'danger'"
+                      size="small"
+                    >
+                      {{ service.status === 'healthy' ? '健康' : '异常' }}
+                    </el-tag>
+                    <el-button size="small" text type="primary" @click="showEditService(container, service)">
+                      <el-icon><Edit /></el-icon>
+                    </el-button>
+                    <el-button size="small" text type="danger" @click="confirmDeleteService(service)">
+                      <el-icon><Delete /></el-icon>
+                    </el-button>
+                  </div>
+                </div>
+              </div>
+              <div v-else class="empty-services">暂无服务</div>
             </div>
           </div>
+          <el-empty v-else description="暂无容器" :image-size="60" />
         </div>
 
         <!-- GPU列表 -->
-        <div class="detail-section" v-if="server.gpus?.length">
-          <h4>GPU ({{ server.gpus.length }})</h4>
-          <div class="gpu-list">
+        <div class="detail-section">
+          <div class="section-header">
+            <h4>GPU ({{ server.gpus?.length || 0 }})</h4>
+            <el-button size="small" type="primary" plain @click="showAddGpu" v-if="isAdmin">
+              <el-icon><Plus /></el-icon> 添加
+            </el-button>
+          </div>
+          <div class="gpu-list" v-if="server.gpus?.length">
             <div v-for="gpu in server.gpus" :key="gpu.id" class="gpu-item">
               <div class="gpu-info">
                 <span class="gpu-model">{{ gpu.model }}</span>
                 <span class="gpu-memory">{{ gpu.memory_gb }}GB</span>
               </div>
-              <el-tag :type="gpu.status === 'free' ? 'success' : 'warning'" size="small">
-                {{ gpu.status === 'free' ? '空闲' : gpu.assigned_user_name }}
-              </el-tag>
+              <div class="gpu-actions">
+                <el-tag :type="gpu.status === 'free' ? 'success' : 'warning'" size="small">
+                  {{ gpu.status === 'free' ? '空闲' : gpu.assigned_user_name }}
+                </el-tag>
+                <el-button size="small" text type="primary" @click="showAssignGpu(gpu)" v-if="isAdmin">
+                  {{ gpu.status === 'free' ? '分配' : '管理' }}
+                </el-button>
+                <el-button size="small" text type="danger" @click="confirmDeleteGpu(gpu)" v-if="isAdmin">
+                  <el-icon><Delete /></el-icon>
+                </el-button>
+              </div>
             </div>
           </div>
+          <el-empty v-else description="暂无GPU" :image-size="60" />
         </div>
       </div>
     </template>
+
+    <!-- 服务表单弹窗 -->
+    <ServiceFormDialog
+      v-model="serviceFormVisible"
+      :container="selectedContainer"
+      :service="editingService"
+      @success="handleRefresh"
+    />
+
+    <!-- GPU表单弹窗 -->
+    <GPUFormDialog
+      v-model="gpuFormVisible"
+      :server="server"
+      :gpu="editingGpu"
+      @success="handleRefresh"
+    />
+
+    <!-- GPU分配弹窗 -->
+    <GPUAssignDialog
+      v-model="gpuAssignVisible"
+      :gpu="selectedGpu"
+      @success="handleRefresh"
+    />
   </el-drawer>
 </template>
 
 <script setup>
-import { DocumentCopy, Box } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { ref, computed } from 'vue'
+import { DocumentCopy, Box, Plus, Edit, Delete, Promotion } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { useAuthStore } from '@/stores/auth'
+import { assetsApi } from '@/api/assets'
+import ServiceFormDialog from './ServiceFormDialog.vue'
+import GPUFormDialog from './GPUFormDialog.vue'
+import GPUAssignDialog from './GPUAssignDialog.vue'
 
-defineProps({
+const props = defineProps({
   modelValue: Boolean,
   server: Object
 })
 
-defineEmits(['update:modelValue', 'refresh'])
+const emit = defineEmits(['update:modelValue', 'refresh'])
+
+const authStore = useAuthStore()
+const isAdmin = computed(() => authStore.isAdmin)
+
+// Service management
+const serviceFormVisible = ref(false)
+const selectedContainer = ref(null)
+const editingService = ref(null)
+
+// GPU management
+const gpuFormVisible = ref(false)
+const gpuAssignVisible = ref(false)
+const editingGpu = ref(null)
+const selectedGpu = ref(null)
 
 const copyText = async (text) => {
   try {
@@ -152,7 +251,7 @@ const copyText = async (text) => {
 }
 
 const getStatusType = (status) => {
-  const map = { online: 'success', running: 'success', offline: 'danger', stopped: 'danger' }
+  const map = { online: 'success', running: 'success', offline: 'danger', stopped: 'danger', healthy: 'success' }
   return map[status] || 'info'
 }
 
@@ -165,6 +264,88 @@ const getUsageColor = (value) => {
   if (value >= 80) return '#F56C6C'
   if (value >= 60) return '#E6A23C'
   return '#67C23A'
+}
+
+const getServiceTypeColor = (type) => {
+  const colors = {
+    web: '#409EFF',
+    api: '#67C23A',
+    database: '#E6A23C',
+    cache: '#F56C6C',
+    queue: '#909399',
+    proxy: '#9C27B0',
+    monitor: '#00BCD4',
+    other: '#606266'
+  }
+  return colors[type] || colors.other
+}
+
+// Service actions
+const showAddService = (container) => {
+  selectedContainer.value = container
+  editingService.value = null
+  serviceFormVisible.value = true
+}
+
+const showEditService = (container, service) => {
+  selectedContainer.value = container
+  editingService.value = service
+  serviceFormVisible.value = true
+}
+
+const confirmDeleteService = async (service) => {
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除服务 "${service.name}" 吗？`,
+      '确认删除',
+      { type: 'warning' }
+    )
+    await assetsApi.deleteService(service.id)
+    ElMessage.success('删除成功')
+    handleRefresh()
+  } catch (e) {
+    if (e !== 'cancel') {
+      ElMessage.error(e.message || '删除失败')
+    }
+  }
+}
+
+// Container action
+const showAddContainer = () => {
+  emit('update:modelValue', false)
+  emit('refresh', { action: 'addContainer', server: props.server })
+}
+
+// GPU actions
+const showAddGpu = () => {
+  editingGpu.value = null
+  gpuFormVisible.value = true
+}
+
+const showAssignGpu = (gpu) => {
+  selectedGpu.value = gpu
+  gpuAssignVisible.value = true
+}
+
+const confirmDeleteGpu = async (gpu) => {
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除GPU "${gpu.model}" 吗？`,
+      '确认删除',
+      { type: 'warning' }
+    )
+    await assetsApi.deleteGpu(gpu.id)
+    ElMessage.success('删除成功')
+    handleRefresh()
+  } catch (e) {
+    if (e !== 'cancel') {
+      ElMessage.error(e.message || '删除失败')
+    }
+  }
+}
+
+const handleRefresh = () => {
+  emit('refresh')
 }
 </script>
 
@@ -180,6 +361,21 @@ const getUsageColor = (value) => {
       margin: 0 0 12px;
       padding-bottom: 8px;
       border-bottom: 1px solid #ebeef5;
+    }
+
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #ebeef5;
+
+      h4 {
+        margin: 0;
+        padding: 0;
+        border: none;
+      }
     }
   }
 
@@ -229,6 +425,7 @@ const getUsageColor = (value) => {
       color: #67C23A;
       font-family: 'JetBrains Mono', monospace;
       font-size: 13px;
+      word-break: break-all;
     }
   }
 
@@ -249,37 +446,115 @@ const getUsageColor = (value) => {
     }
   }
 
-  .container-list, .gpu-list {
+  .container-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .container-item {
+    background: #f5f7fa;
+    border-radius: 8px;
+    padding: 12px;
+
+    .container-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .container-name {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .container-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+  }
+
+  .services-list {
+    margin-top: 8px;
+    padding-left: 24px;
+    border-left: 2px solid #e4e7ed;
+  }
+
+  .service-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px dashed #ebeef5;
+
+    &:last-child {
+      border-bottom: none;
+    }
+
+    .service-info {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+
+      .service-name {
+        font-size: 13px;
+      }
+
+      .service-port {
+        font-size: 12px;
+        color: #909399;
+        font-family: 'JetBrains Mono', monospace;
+      }
+    }
+
+    .service-actions {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+  }
+
+  .empty-services {
+    font-size: 12px;
+    color: #909399;
+    padding: 8px 0 0 24px;
+  }
+
+  .gpu-list {
     display: flex;
     flex-direction: column;
     gap: 8px;
   }
 
-  .container-item, .gpu-item {
+  .gpu-item {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 10px 12px;
+    padding: 12px;
     background: #f5f7fa;
     border-radius: 8px;
-  }
 
-  .container-name {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 13px;
-  }
-
-  .gpu-info {
-    .gpu-model {
-      font-size: 13px;
-      font-weight: 500;
+    .gpu-info {
+      .gpu-model {
+        font-size: 13px;
+        font-weight: 500;
+      }
+      .gpu-memory {
+        font-size: 12px;
+        color: #909399;
+        margin-left: 8px;
+      }
     }
-    .gpu-memory {
-      font-size: 12px;
-      color: #909399;
-      margin-left: 8px;
+
+    .gpu-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
   }
 }

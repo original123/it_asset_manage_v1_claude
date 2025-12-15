@@ -6,7 +6,8 @@ from flask_jwt_extended import (
 )
 from app.models import User
 from app.extensions import db
-from app.utils import api_response, error_response, get_current_user
+from app.utils import api_response, error_response, get_current_user, validate_or_error
+from app.schemas import login_schema
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -14,12 +15,13 @@ auth_bp = Blueprint('auth', __name__)
 @auth_bp.route('/login', methods=['POST'])
 def login():
     """用户登录"""
-    data = request.get_json() or {}
-    username = data.get('username', '').strip()
-    password = data.get('password', '')
+    # 验证输入数据
+    data, error = validate_or_error(login_schema)
+    if error:
+        return error
 
-    if not username or not password:
-        return error_response('用户名和密码不能为空', 422, 422)
+    username = data['username'].strip()
+    password = data['password']
 
     user = User.query.filter_by(username=username).first()
     if user is None or not user.check_password(password):

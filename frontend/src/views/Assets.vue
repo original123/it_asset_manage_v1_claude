@@ -98,47 +98,88 @@
         <el-table-column label="名称" min-width="280" fixed>
           <template #default="{ row }">
             <div class="name-cell">
-              <el-icon class="type-icon server"><Monitor /></el-icon>
-              <span class="name">{{ row.name }}</span>
-              <el-tag
-                size="small"
-                :style="{ backgroundColor: row.environment_color, borderColor: row.environment_color }"
-                effect="dark"
-                class="env-tag"
-              >
-                {{ row.environment_name }}
-              </el-tag>
+              <!-- 服务器 -->
+              <template v-if="!row._type">
+                <el-icon class="type-icon server"><Monitor /></el-icon>
+                <span class="name">{{ row.name }}</span>
+                <el-tag
+                  size="small"
+                  :style="{ backgroundColor: row.environment_color, borderColor: row.environment_color }"
+                  effect="dark"
+                  class="env-tag"
+                >
+                  {{ row.environment_name }}
+                </el-tag>
+              </template>
+
+              <!-- 容器 -->
+              <template v-else-if="row._type === 'container'">
+                <el-icon class="type-icon container"><Box /></el-icon>
+                <span class="name">{{ row.name }}</span>
+                <el-tag size="small" type="success">容器</el-tag>
+              </template>
+
+              <!-- 服务 -->
+              <template v-else-if="row._type === 'service'">
+                <el-icon class="type-icon service"><Setting /></el-icon>
+                <span class="name">{{ row.name }}</span>
+                <el-tag size="small" type="warning">服务</el-tag>
+              </template>
+
+              <!-- GPU -->
+              <template v-else-if="row._type === 'gpu'">
+                <el-icon class="type-icon gpu"><Cpu /></el-icon>
+                <span class="name">{{ row.model }} {{ row.memory_gb }}GB</span>
+                <el-tag size="small" type="primary">GPU</el-tag>
+              </template>
             </div>
           </template>
         </el-table-column>
 
         <!-- 内网IP -->
-        <el-table-column label="内网IP" width="150">
+        <el-table-column label="内网IP" width="180">
           <template #default="{ row }">
-            <span class="copyable" @click.stop="copyText(row.internal_ip)">
-              {{ row.internal_ip }}
-              <el-icon class="copy-icon"><DocumentCopy /></el-icon>
-            </span>
+            <template v-if="!row._type">
+              <span class="copyable" @click.stop="copyText(row.internal_ip)">
+                {{ row.internal_ip }}
+                <el-icon class="copy-icon"><DocumentCopy /></el-icon>
+              </span>
+            </template>
+            <template v-else-if="row._type === 'container' && row.port_mappings?.length">
+              <span class="text-muted port-info">{{ formatPortMapping(row.port_mappings[0]) }}</span>
+            </template>
+            <template v-else-if="row._type === 'service'">
+              <span class="text-muted">:{{ row.port || '-' }}</span>
+            </template>
+            <span v-else class="text-muted">-</span>
           </template>
         </el-table-column>
 
         <!-- 外网IP -->
         <el-table-column label="外网IP" width="150">
           <template #default="{ row }">
-            <span v-if="row.external_ip" class="copyable" @click.stop="copyText(row.external_ip)">
-              {{ row.external_ip }}
-              <el-icon class="copy-icon"><DocumentCopy /></el-icon>
-            </span>
+            <template v-if="!row._type && row.external_ip">
+              <span class="copyable" @click.stop="copyText(row.external_ip)">
+                {{ row.external_ip }}
+                <el-icon class="copy-icon"><DocumentCopy /></el-icon>
+              </span>
+            </template>
             <span v-else class="text-muted">-</span>
           </template>
         </el-table-column>
 
         <!-- 配置 -->
-        <el-table-column label="配置" width="160">
+        <el-table-column label="配置" width="180">
           <template #default="{ row }">
-            <span v-if="row.cpu_cores || row.memory_gb">
-              {{ row.cpu_cores || '-' }}C / {{ row.memory_gb || '-' }}G
-            </span>
+            <template v-if="!row._type && (row.cpu_cores || row.memory_gb)">
+              <span>{{ row.cpu_cores || '-' }}C / {{ row.memory_gb || '-' }}G</span>
+            </template>
+            <template v-else-if="row._type === 'container'">
+              <span class="text-muted">{{ row.image || '-' }}</span>
+            </template>
+            <template v-else-if="row._type === 'gpu'">
+              <span class="text-muted">{{ row.memory_gb }}GB</span>
+            </template>
             <span v-else class="text-muted">-</span>
           </template>
         </el-table-column>
@@ -146,28 +187,31 @@
         <!-- 资源使用率 -->
         <el-table-column label="资源使用" width="200">
           <template #default="{ row }">
-            <div class="usage-bars">
-              <div class="usage-item">
-                <span class="usage-label">CPU</span>
-                <el-progress
-                  :percentage="row.cpu_usage || 0"
-                  :stroke-width="6"
-                  :color="getUsageColor(row.cpu_usage)"
-                  :show-text="false"
-                />
-                <span class="usage-value">{{ row.cpu_usage || 0 }}%</span>
+            <template v-if="!row._type">
+              <div class="usage-bars">
+                <div class="usage-item">
+                  <span class="usage-label">CPU</span>
+                  <el-progress
+                    :percentage="row.cpu_usage || 0"
+                    :stroke-width="6"
+                    :color="getUsageColor(row.cpu_usage)"
+                    :show-text="false"
+                  />
+                  <span class="usage-value">{{ row.cpu_usage || 0 }}%</span>
+                </div>
+                <div class="usage-item">
+                  <span class="usage-label">MEM</span>
+                  <el-progress
+                    :percentage="row.memory_usage || 0"
+                    :stroke-width="6"
+                    :color="getUsageColor(row.memory_usage)"
+                    :show-text="false"
+                  />
+                  <span class="usage-value">{{ row.memory_usage || 0 }}%</span>
+                </div>
               </div>
-              <div class="usage-item">
-                <span class="usage-label">MEM</span>
-                <el-progress
-                  :percentage="row.memory_usage || 0"
-                  :stroke-width="6"
-                  :color="getUsageColor(row.memory_usage)"
-                  :show-text="false"
-                />
-                <span class="usage-value">{{ row.memory_usage || 0 }}%</span>
-              </div>
-            </div>
+            </template>
+            <span v-else class="text-muted">-</span>
           </template>
         </el-table-column>
 
@@ -175,22 +219,31 @@
         <el-table-column label="状态" width="100" align="center">
           <template #default="{ row }">
             <el-tag
+              v-if="row.status"
               :type="getStatusType(row.status)"
               size="small"
               effect="light"
             >
               {{ getStatusText(row.status) }}
             </el-tag>
+            <span v-else class="text-muted">-</span>
           </template>
         </el-table-column>
 
         <!-- 负责人 -->
-        <el-table-column prop="responsible_person" label="负责人" width="100" />
+        <el-table-column prop="responsible_person" label="负责人" width="100">
+          <template #default="{ row }">
+            {{ row.responsible_person || row.assigned_to || '-' }}
+          </template>
+        </el-table-column>
 
         <!-- 容器/GPU数量 -->
         <el-table-column label="容器/GPU" width="100" align="center">
           <template #default="{ row }">
-            <span>{{ row.container_count }} / {{ row.gpu_count }}</span>
+            <template v-if="!row._type">
+              <span>{{ row.container_count }} / {{ row.gpu_count }}</span>
+            </template>
+            <span v-else class="text-muted">-</span>
           </template>
         </el-table-column>
 
@@ -257,7 +310,7 @@ import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Download, ArrowDown, Plus, Monitor, DocumentCopy,
-  Connection, Edit, Delete
+  Connection, Edit, Delete, Box, Setting, Cpu
 } from '@element-plus/icons-vue'
 import { useAssetsStore } from '@/stores/assets'
 import { useAuthStore } from '@/stores/auth'
@@ -332,8 +385,16 @@ const clearFilters = () => {
 }
 
 const handleRowClick = (row) => {
-  selectedServer.value = row
-  serverDrawerVisible.value = true
+  // 只有服务器行才打开详情抽屉
+  if (!row._type) {
+    selectedServer.value = row
+    serverDrawerVisible.value = true
+  }
+}
+
+const formatPortMapping = (pm) => {
+  if (!pm) return '-'
+  return `容器:${pm.container_port}→内:${pm.internal_port}→外:${pm.external_port || '-'}`
 }
 
 const copyText = async (text) => {
@@ -353,18 +414,42 @@ const getUsageColor = (value) => {
 
 const getStatusType = (status) => {
   const map = {
+    // 服务器状态
     online: 'success',
     offline: 'danger',
-    maintenance: 'warning'
+    maintenance: 'warning',
+    // 容器状态
+    running: 'success',
+    stopped: 'danger',
+    error: 'danger',
+    // 服务状态
+    healthy: 'success',
+    unhealthy: 'danger',
+    // GPU状态
+    available: 'success',
+    in_use: 'warning',
+    unavailable: 'danger'
   }
   return map[status] || 'info'
 }
 
 const getStatusText = (status) => {
   const map = {
+    // 服务器状态
     online: '在线',
     offline: '离线',
-    maintenance: '维护中'
+    maintenance: '维护中',
+    // 容器状态
+    running: '运行',
+    stopped: '停止',
+    error: '错误',
+    // 服务状态
+    healthy: '健康',
+    unhealthy: '异常',
+    // GPU状态
+    available: '空闲',
+    in_use: '使用中',
+    unavailable: '不可用'
   }
   return map[status] || status
 }
@@ -502,6 +587,7 @@ const downloadFile = (url, filename) => {
       &.server { color: #409EFF; }
       &.container { color: #67C23A; }
       &.service { color: #E6A23C; }
+      &.gpu { color: #F56C6C; }
     }
 
     .name {
@@ -536,6 +622,11 @@ const downloadFile = (url, filename) => {
         opacity: 1;
       }
     }
+  }
+
+  .port-info {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
   }
 
   .text-muted {

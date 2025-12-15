@@ -5,8 +5,9 @@ from app.models import Datacenter, Server, Container, Service, AuditLog
 from app.extensions import db
 from app.utils import (
     api_response, error_response, get_current_user,
-    admin_required, get_request_json
+    admin_required, get_request_json, validate_or_error
 )
+from app.schemas import datacenter_create_schema, datacenter_update_schema
 
 datacenters_bp = Blueprint('datacenters', __name__)
 
@@ -80,10 +81,11 @@ def get_datacenter(id):
 def create_datacenter():
     """创建机房"""
     user = get_current_user()
-    data = get_request_json()
 
-    if not data.get('name'):
-        return error_response('机房名称不能为空', 422, 422)
+    # 验证输入数据
+    data, error = validate_or_error(datacenter_create_schema)
+    if error:
+        return error
 
     if Datacenter.query.filter_by(name=data['name']).first():
         return error_response('机房名称已存在', 422, 422)

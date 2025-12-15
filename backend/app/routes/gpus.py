@@ -5,8 +5,9 @@ from app.models import GPU, User, AuditLog
 from app.extensions import db
 from app.utils import (
     api_response, error_response, get_current_user,
-    admin_required, paginate_query, get_request_json
+    admin_required, paginate_query, get_request_json, validate_or_error
 )
+from app.schemas import gpu_create_schema, gpu_update_schema
 
 gpus_bp = Blueprint('gpus', __name__)
 
@@ -53,12 +54,11 @@ def get_gpu(id):
 def create_gpu():
     """创建GPU"""
     user = get_current_user()
-    data = get_request_json()
 
-    required_fields = ['server_id', 'model', 'memory_gb']
-    for field in required_fields:
-        if not data.get(field):
-            return error_response(f'{field} 不能为空', 422, 422)
+    # 验证输入数据
+    data, error = validate_or_error(gpu_create_schema)
+    if error:
+        return error
 
     gpu = GPU(
         server_id=data['server_id'],
