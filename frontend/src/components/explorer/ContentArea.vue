@@ -1,5 +1,5 @@
 <template>
-  <div class="content-area" v-loading="explorerStore.loading">
+  <div class="content-area" v-loading="explorerStore.loading" @contextmenu.prevent="handleBackgroundContextMenu">
     <!-- 内容头部 -->
     <div class="content-header" v-if="explorerStore.currentNode">
       <div class="header-info">
@@ -57,6 +57,7 @@
               :selected="isSelected(container.id, 'container')"
               @click="handleItemClick(container, 'container', $event)"
               @dblclick="handleItemDblClick(container, 'container')"
+              @contextmenu.prevent.stop="handleContextMenu($event, container, 'container')"
             />
           </div>
         </div>
@@ -76,6 +77,7 @@
               :selected="isSelected(gpu.id, 'gpu')"
               @click="handleItemClick(gpu, 'gpu', $event)"
               @dblclick="handleItemDblClick(gpu, 'gpu')"
+              @contextmenu.prevent.stop="handleContextMenu($event, gpu, 'gpu')"
             />
           </div>
         </div>
@@ -95,6 +97,7 @@
               :selected="isSelected(service.id, 'service')"
               @click="handleItemClick(service, 'service', $event)"
               @dblclick="handleItemDblClick(service, 'service')"
+              @contextmenu.prevent.stop="handleContextMenu($event, service, 'service')"
             />
           </div>
         </div>
@@ -124,6 +127,7 @@
               :selected="isSelected(child.id, child.type)"
               @click="handleItemClick(child, child.type, $event)"
               @dblclick="handleItemDblClick(child, child.type)"
+              @contextmenu.prevent.stop="handleContextMenu($event, child, child.type)"
             />
           </div>
         </div>
@@ -154,19 +158,38 @@
         </div>
       </template>
     </div>
+
+    <!-- 右键菜单 -->
+    <ContextMenu
+      v-model:visible="contextMenuVisible"
+      :x="contextMenuX"
+      :y="contextMenuY"
+      :target-type="contextMenuType"
+      :target-data="contextMenuData"
+      @action="handleContextMenuAction"
+    />
   </div>
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import {
   FolderOpened, Monitor, Box, Cpu, Setting,
   Sort, Refresh, Location
 } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
 import { useExplorerStore } from '@/stores/explorer'
 import AssetCard from './AssetCard.vue'
+import ContextMenu from './ContextMenu.vue'
 
 const explorerStore = useExplorerStore()
+
+// ========== 右键菜单状态 ==========
+const contextMenuVisible = ref(false)
+const contextMenuX = ref(0)
+const contextMenuY = ref(0)
+const contextMenuType = ref('')
+const contextMenuData = ref({})
 
 // 获取标题图标
 function getTitleIcon(type) {
@@ -242,8 +265,16 @@ function isSelected(id, type) {
 
 // 处理项目点击
 function handleItemClick(item, type, event) {
-  const multiSelect = event.ctrlKey || event.metaKey
-  explorerStore.selectItem({ id: item.id, type, ...item }, multiSelect)
+  if (event.shiftKey) {
+    // Shift+Click 范围选择
+    explorerStore.selectRange({ id: item.id, type, ...item })
+  } else if (event.ctrlKey || event.metaKey) {
+    // Ctrl+Click 多选
+    explorerStore.selectItem({ id: item.id, type, ...item }, true)
+  } else {
+    // 普通点击单选
+    explorerStore.selectItem({ id: item.id, type, ...item }, false)
+  }
 }
 
 // 处理项目双击
@@ -273,6 +304,99 @@ async function handleRefresh() {
     await explorerStore.loadServerContent(explorerStore.currentNode.nodeId)
   } else {
     await explorerStore.loadNavigationTree()
+  }
+}
+
+// ========== 右键菜单处理 ==========
+
+// 显示右键菜单
+function handleContextMenu(event, item, type) {
+  contextMenuX.value = event.clientX
+  contextMenuY.value = event.clientY
+  contextMenuType.value = type
+  contextMenuData.value = item
+  contextMenuVisible.value = true
+}
+
+// 空白区域右键菜单
+function handleBackgroundContextMenu(event) {
+  contextMenuX.value = event.clientX
+  contextMenuY.value = event.clientY
+  contextMenuType.value = ''
+  contextMenuData.value = {}
+  contextMenuVisible.value = true
+}
+
+// 处理右键菜单操作
+function handleContextMenuAction({ action, type, data }) {
+  switch (action) {
+    case 'view':
+      console.log('查看详情:', type, data)
+      // TODO: 打开详情弹窗
+      break
+    case 'edit':
+      console.log('编辑:', type, data)
+      // TODO: 打开编辑弹窗
+      break
+    case 'delete':
+      console.log('删除:', type, data)
+      // TODO: 调用删除API
+      break
+    case 'copyIP':
+      if (data.data?.ip || data.ip) {
+        navigator.clipboard.writeText(data.data?.ip || data.ip)
+        ElMessage.success('IP 已复制到剪贴板')
+      }
+      break
+    case 'copySSH':
+      const ip = data.data?.ip || data.ip
+      if (ip) {
+        navigator.clipboard.writeText(`ssh root@${ip}`)
+        ElMessage.success('SSH 命令已复制到剪贴板')
+      }
+      break
+    case 'copyPorts':
+      // 复制容器端口映射
+      const ports = data.port_mappings || data.ports || ''
+      if (ports) {
+        navigator.clipboard.writeText(ports)
+        ElMessage.success('端口映射已复制到剪贴板')
+      }
+      break
+    case 'copyPort':
+      // 复制服务端口
+      const port = data.port || ''
+      if (port) {
+        navigator.clipboard.writeText(String(port))
+        ElMessage.success('端口已复制到剪贴板')
+      }
+      break
+    case 'copyInfo':
+      // 复制GPU信息
+      const gpuInfo = `${data.gpu_model || data.model || ''} (${data.gpu_uuid || data.uuid || ''})`
+      navigator.clipboard.writeText(gpuInfo)
+      ElMessage.success('GPU 信息已复制到剪贴板')
+      break
+    case 'addContainer':
+    case 'addGPU':
+    case 'addService':
+    case 'addServer':
+      console.log('添加:', action, type, data)
+      // TODO: 打开添加弹窗
+      break
+    case 'open':
+      if (type === 'environment' || type === 'datacenter') {
+        explorerStore.navigateTo(data.id, type)
+      }
+      break
+    case 'refresh':
+      handleRefresh()
+      break
+    case 'selectAll':
+      explorerStore.selectAll()
+      break
+    default:
+      console.log('未处理的操作:', action, type, data)
   }
 }
 </script>

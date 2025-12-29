@@ -461,6 +461,133 @@ export const useExplorerStore = defineStore('explorer', () => {
     for (const gpu of currentContent.value.gpus) {
       selectedItems.value.push({ id: gpu.id, type: 'gpu', data: gpu })
     }
+    for (const service of currentContent.value.services) {
+      selectedItems.value.push({ id: service.id, type: 'service', data: service })
+    }
+  }
+
+  // 获取当前所有可选项列表（用于键盘导航）
+  function getAllSelectableItems() {
+    const items = []
+
+    // 如果在服务器内容页面
+    if (currentNode.value?.type === 'server') {
+      for (const container of currentContent.value.containers) {
+        items.push({ id: container.id, type: 'container', data: container })
+      }
+      for (const gpu of currentContent.value.gpus) {
+        items.push({ id: gpu.id, type: 'gpu', data: gpu })
+      }
+      for (const service of currentContent.value.services) {
+        items.push({ id: service.id, type: 'service', data: service })
+      }
+    } else if (currentNode.value) {
+      // 如果在环境/机房节点，返回子节点
+      for (const child of currentNode.value.children || []) {
+        items.push({ id: child.id, type: child.type, data: child })
+      }
+    }
+
+    return items
+  }
+
+  // 键盘导航：选择下一个/上一个项目
+  function selectNext() {
+    const items = getAllSelectableItems()
+    if (items.length === 0) return
+
+    if (selectedItems.value.length === 0) {
+      // 没有选中项，选择第一个
+      selectItem({ ...items[0].data, id: items[0].id, type: items[0].type })
+      return
+    }
+
+    // 找到当前选中项的索引
+    const currentSelected = selectedItems.value[selectedItems.value.length - 1]
+    const currentIndex = items.findIndex(
+      i => i.id === currentSelected.id && i.type === currentSelected.type
+    )
+
+    if (currentIndex < items.length - 1) {
+      const nextItem = items[currentIndex + 1]
+      selectItem({ ...nextItem.data, id: nextItem.id, type: nextItem.type })
+    }
+  }
+
+  function selectPrevious() {
+    const items = getAllSelectableItems()
+    if (items.length === 0) return
+
+    if (selectedItems.value.length === 0) {
+      // 没有选中项，选择最后一个
+      const lastItem = items[items.length - 1]
+      selectItem({ ...lastItem.data, id: lastItem.id, type: lastItem.type })
+      return
+    }
+
+    // 找到当前选中项的索引
+    const currentSelected = selectedItems.value[selectedItems.value.length - 1]
+    const currentIndex = items.findIndex(
+      i => i.id === currentSelected.id && i.type === currentSelected.type
+    )
+
+    if (currentIndex > 0) {
+      const prevItem = items[currentIndex - 1]
+      selectItem({ ...prevItem.data, id: prevItem.id, type: prevItem.type })
+    }
+  }
+
+  // 打开当前选中的项目
+  async function openSelected() {
+    if (selectedItems.value.length !== 1) return
+
+    const selected = selectedItems.value[0]
+    if (selected.type === 'environment' || selected.type === 'datacenter') {
+      await navigateTo(selected.id, selected.type)
+    } else if (selected.type === 'server') {
+      const serverId = selected.id.toString().replace('server-', '')
+      await loadServerContent(parseInt(serverId))
+    }
+  }
+
+  // Shift+Click 范围选择
+  function selectRange(item) {
+    const items = getAllSelectableItems()
+    if (items.length === 0) return
+
+    if (!lastSelected.value) {
+      // 没有上一个选中项，执行普通选择
+      selectItem(item)
+      return
+    }
+
+    // 找到上一个选中项的索引
+    const lastIndex = items.findIndex(
+      i => i.id === lastSelected.value.id && i.type === lastSelected.value.type
+    )
+    // 找到当前点击项的索引
+    const currentIndex = items.findIndex(
+      i => i.id === item.id && i.type === item.type
+    )
+
+    if (lastIndex === -1 || currentIndex === -1) {
+      selectItem(item)
+      return
+    }
+
+    // 计算范围
+    const start = Math.min(lastIndex, currentIndex)
+    const end = Math.max(lastIndex, currentIndex)
+
+    // 选择范围内的所有项
+    selectedItems.value = []
+    for (let i = start; i <= end; i++) {
+      selectedItems.value.push({
+        id: items[i].id,
+        type: items[i].type,
+        data: items[i].data
+      })
+    }
   }
 
   // 切换视图模式
@@ -615,6 +742,11 @@ export const useExplorerStore = defineStore('explorer', () => {
     selectItem,
     clearSelection,
     selectAll,
+    selectNext,
+    selectPrevious,
+    openSelected,
+    selectRange,
+    getAllSelectableItems,
     setViewMode,
     setGroupingMode,
     navigateBack,

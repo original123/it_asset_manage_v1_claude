@@ -175,14 +175,17 @@ function stopResize() {
 
 // 键盘快捷键
 function handleKeydown(e) {
+  // 检查目标是否是输入框
+  const isInputFocused = e.target && e.target.matches && e.target.matches('input, textarea')
+
   // Ctrl+K 或 / 聚焦搜索框
-  if ((e.ctrlKey && e.key === 'k') || (e.key === '/' && !e.target.matches('input, textarea'))) {
+  if ((e.ctrlKey && e.key === 'k') || (e.key === '/' && !isInputFocused)) {
     e.preventDefault()
     document.querySelector('.search-input input')?.focus()
   }
 
   // Backspace 返回上一级
-  if (e.key === 'Backspace' && !e.target.matches('input, textarea')) {
+  if (e.key === 'Backspace' && !isInputFocused) {
     e.preventDefault()
     explorerStore.navigateBack()
   }
@@ -199,9 +202,34 @@ function handleKeydown(e) {
   }
 
   // Ctrl+A 全选
-  if (e.ctrlKey && e.key === 'a' && !e.target.matches('input, textarea')) {
+  if (e.ctrlKey && e.key === 'a' && !isInputFocused) {
     e.preventDefault()
     explorerStore.selectAll()
+  }
+
+  // 方向键导航
+  if (!isInputFocused) {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+      e.preventDefault()
+      explorerStore.selectNext()
+    }
+
+    if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+      e.preventDefault()
+      explorerStore.selectPrevious()
+    }
+
+    // Enter 打开选中项
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      explorerStore.openSelected()
+    }
+
+    // Delete 删除选中项
+    if (e.key === 'Delete') {
+      // TODO: 实现删除功能
+      console.log('删除选中项:', explorerStore.selectedItems)
+    }
   }
 }
 
