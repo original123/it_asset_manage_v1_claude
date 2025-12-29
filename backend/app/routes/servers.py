@@ -75,10 +75,31 @@ def get_servers_tree():
             # 为树形展示准备 children 数组
             children = []
 
+            # 第一个子节点：资源卡片（特殊类型）
+            children.append({
+                '_type': '_resource_card',
+                'id': f'card_{server.id}',
+                'cpu_usage': server_data.get('cpu_usage'),
+                'memory_usage': server_data.get('memory_usage'),
+                'disk_usage': server_data.get('disk_usage'),
+                'cpu_cores': server_data.get('cpu_cores'),
+                'memory_gb': server_data.get('memory_gb'),
+                'disk_gb': server_data.get('disk_gb'),
+                'gpu_count': server_data.get('gpu_count', 0),
+                'updated_at': server_data.get('updated_at'),
+                'ssh_command': server_data.get('ssh_command'),
+                'internal_ip': server_data.get('internal_ip')
+            })
+
             # 添加容器到 children
             for container in server.containers:
                 container_data = container.to_dict()
                 container_data['_type'] = 'container'  # 标记类型
+
+                # 添加端口映射数据
+                container_data['port_mappings'] = [
+                    pm.to_dict() for pm in sorted(container.port_mappings, key=lambda x: x.container_port)
+                ]
 
                 if expand_level >= 3:
                     # 将服务作为容器的子节点
@@ -216,3 +237,166 @@ def delete_server(id):
     db.session.commit()
 
     return api_response(None, '服务器删除成功')
+
+
+@servers_bp.route('/batch-update', methods=['POST'])
+@jwt_required()
+@admin_required
+def batch_update_servers():
+    """批量更新服务器"""
+    user = get_current_user()
+    data = get_request_json()
+
+    # 参数验证
+    if not data or 'ids' not in data or 'updates' not in data:
+        return error_response('参数错误：需要提供ids和updates字段', 400)
+
+    ids = data.get('ids', [])
+    updates = data.get('updates', {})
+
+    if not isinstance(ids, list) or not ids:
+        return error_response('ids必须是非空数组', 400)
+
+    if not isinstance(updates, dict) or not updates:
+        return error_response('updates必须是非空对象', 400)
+
+    success = []
+    failed = []
+
+    # 可更新的字段列表
+    updatable_fields = [
+        'datacenter_id', 'environment_id', 'status',
+        'responsible_person', 'description', 'cpu_usage',
+        'memory_usage', 'disk_usage'
+    ]
+
+    # 验证updates中的字段都是允许的
+    invalid_fields = [f for f in updates.keys() if f not in updatable_fields]
+    if invalid_fields:
+        return error_response(f'不允许更新的字段: {", ".join(invalid_fields)}', 400)
+
+    try:
+        # 使用事务
+        for server_id in ids:
+            try:
+                server = Server.query.get(server_id)
+                if not server:
+                    failed.append({'id': server_id, 'reason': '服务器不存在'})
+                    continue
+
+                old_data = server.to_dict()
+                changes = {}
+
+                # 应用更新
+                for field, value in updates.items():
+                    old_val = getattr(server, field)
+                    if old_val != value:
+                        changes[field] = {'old': old_val, 'new': value}
+                        setattr(server, field, value)
+
+                # 记录审计日志
+                if changes:
+                    AuditLog.log_action(
+                        user=user, action='batch_update', resource_type='server',
+                        resource_id=server.id, resource_name=server.name,
+                        changes=changes, ip_address=request.remote_addr
+                    )
+
+                success.append(server_id)
+
+            except Exception as e:
+                failed.append({'id': server_id, 'reason': str(e)})
+
+        # 提交事务
+        db.session.commit()
+
+        return api_response({
+            'success': success,
+            'failed': failed,
+            'total': len(ids),
+            'success_count': len(success),
+            'failed_count': len(failed)
+        }, f'批量更新完成: {len(success)}/{len(ids)} 成功')
+
+    except Exception as e:
+        db.session.rollback()
+        return error_response(f'批量更新失败: {str(e)}', 500)
+
+
+@servers_bp.route('/batch-delete', methods=['POST'])
+@jwt_required()
+@admin_required
+def batch_delete_servers():
+    """批量删除服务器"""
+    user = get_current_user()
+    data = get_request_json()
+
+    # 参数验证
+    if not data or 'ids' not in data:
+        return error_response('参数错误：需要提供ids字段', 400)
+
+    ids = data.get('ids', [])
+
+    if not isinstance(ids, list) or not ids:
+        return error_response('ids必须是非空数组', 400)
+
+    success = []
+    failed = []
+
+    try:
+        # 使用事务
+        for server_id in ids:
+            try:
+                server = Server.query.get(server_id)
+                if not server:
+                    failed.append({'id': server_id, 'reason': '服务器不存在'})
+                    continue
+
+                # 检查是否有关联的容器或GPU (使用count()避免加载所有数据)
+                from app.models import Container, GPU
+                container_count = Container.query.filter_by(server_id=server.id).count()
+                gpu_count = GPU.query.filter_by(server_id=server.id).count()
+
+                if container_count > 0:
+                    failed.append({
+                        'id': server_id,
+                        'reason': f'服务器有 {container_count} 个容器,请先删除容器'
+                    })
+                    continue
+
+                if gpu_count > 0:
+                    failed.append({
+                        'id': server_id,
+                        'reason': f'服务器有 {gpu_count} 个GPU,请先删除GPU'
+                    })
+                    continue
+
+                # 记录审计日志
+                snapshot = server.to_dict(include_children=True)
+                AuditLog.log_action(
+                    user=user, action='batch_delete', resource_type='server',
+                    resource_id=server.id, resource_name=server.name,
+                    snapshot=snapshot, ip_address=request.remote_addr
+                )
+
+                db.session.delete(server)
+                success.append(server_id)
+
+            except Exception as e:
+                failed.append({'id': server_id, 'reason': str(e)})
+
+        # 提交事务
+        db.session.commit()
+
+        return api_response({
+            'success': success,
+            'failed': failed,
+            'total': len(ids),
+            'success_count': len(success),
+            'failed_count': len(failed)
+        }, f'批量删除完成: {len(success)}/{len(ids)} 成功')
+
+    except Exception as e:
+        db.session.rollback()
+        return error_response(f'批量删除失败: {str(e)}', 500)
+
