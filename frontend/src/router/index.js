@@ -24,6 +24,12 @@ const routes = [
         meta: { title: '资产管理' }
       },
       {
+        path: 'explorer',
+        name: 'Explorer',
+        component: () => import('@/components/explorer/AssetExplorer.vue'),
+        meta: { title: '资产浏览器' }
+      },
+      {
         path: 'overview',
         name: 'Overview',
         component: () => import('@/views/Overview.vue'),
@@ -58,21 +64,21 @@ const waitForToken = async (maxWait = 500) => {
 }
 
 // 路由守卫
-router.beforeEach(async (to, from, next) => {
-  const authStore = useAuthStore()
+// router.beforeEach(async (to, from, next) => {
+//   const authStore = useAuthStore()
 
-  // 如果是从登录页跳转过来，等待 token 就绪
-  if (from.name === 'Login' && to.meta.requiresAuth !== false) {
-    await waitForToken()
-  }
+//   // 如果是从登录页跳转过来，等待 token 就绪
+//   if (from.name === 'Login' && to.meta.requiresAuth !== false) {
+//     await waitForToken()
+//   }
 
-  if (to.meta.requiresAuth !== false && !authStore.isAuthenticated) {
-    next({ name: 'Login', query: { redirect: to.fullPath } })
-  } else if (to.name === 'Login' && authStore.isAuthenticated) {
-    next({ path: '/' })
-  } else {
-    next()
-  }
-})
+//   if (to.meta.requiresAuth !== false && !authStore.isAuthenticated) {
+//     next({ name: 'Login', query: { redirect: to.fullPath } })
+//   } else if (to.name === 'Login' && authStore.isAuthenticated) {
+//     next({ path: '/' })
+//   } else {
+//     next()
+//   }
+// })
 
 export default router

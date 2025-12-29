@@ -102,7 +102,7 @@ import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   Search, ArrowDown, Setting, Key, SwitchButton,
-  Monitor, DataBoard, Document
+  Monitor, DataBoard, Document, FolderOpened
 } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 import SettingsDialog from '@/components/SettingsDialog.vue'
@@ -117,6 +117,7 @@ const settingsVisible = ref(false)
 const passwordVisible = ref(false)
 
 const navItems = [
+  { path: '/explorer', label: '资产浏览器', icon: FolderOpened },
   { path: '/assets', label: '资产管理', icon: Monitor },
   { path: '/overview', label: '机房总览', icon: DataBoard },
   { path: '/audit', label: '审计日志', icon: Document }
