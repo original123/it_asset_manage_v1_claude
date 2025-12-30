@@ -3,10 +3,16 @@
     class="asset-card"
     :class="[
       type,
-      { selected, 'list-mode': isListMode }
+      { selected, 'list-mode': isListMode, 'drag-over': isDragOver, 'dragging': isDragging }
     ]"
+    :draggable="draggable"
     @click="$emit('click', $event)"
     @dblclick="$emit('dblclick', $event)"
+    @dragstart="handleDragStart"
+    @dragend="handleDragEnd"
+    @dragover.prevent="handleDragOver"
+    @dragleave="handleDragLeave"
+    @drop="handleDrop"
   >
     <!-- 网格模式 -->
     <template v-if="!isListMode">
@@ -57,7 +63,7 @@
 </template>
 
 <script setup>
-import { computed, inject } from 'vue'
+import { computed, ref } from 'vue'
 import {
   FolderOpened, Location, Monitor, Box, Setting, Cpu
 } from '@element-plus/icons-vue'
@@ -75,12 +81,24 @@ const props = defineProps({
   selected: {
     type: Boolean,
     default: false
+  },
+  draggable: {
+    type: Boolean,
+    default: false
+  },
+  index: {
+    type: Number,
+    default: 0
   }
 })
 
-defineEmits(['click', 'dblclick'])
+const emit = defineEmits(['click', 'dblclick', 'dragstart', 'dragend', 'drop'])
 
 const explorerStore = useExplorerStore()
+
+// 拖拽状态
+const isDragging = ref(false)
+const isDragOver = ref(false)
 
 // 是否列表模式
 const isListMode = computed(() => explorerStore.viewMode === 'list')
@@ -165,6 +183,51 @@ const cardSubtitle = computed(() => {
 const childCount = computed(() => {
   return props.item.children?.length || props.item.count || 0
 })
+
+// ========== 拖拽处理 ==========
+
+function handleDragStart(e) {
+  if (!props.draggable) return
+  isDragging.value = true
+  e.dataTransfer.effectAllowed = 'move'
+  e.dataTransfer.setData('application/json', JSON.stringify({
+    id: props.item.id,
+    type: props.type,
+    index: props.index
+  }))
+  emit('dragstart', { item: props.item, type: props.type, index: props.index })
+}
+
+function handleDragEnd() {
+  isDragging.value = false
+  isDragOver.value = false
+  emit('dragend')
+}
+
+function handleDragOver(e) {
+  if (!props.draggable) return
+  isDragOver.value = true
+}
+
+function handleDragLeave() {
+  isDragOver.value = false
+}
+
+function handleDrop(e) {
+  if (!props.draggable) return
+  isDragOver.value = false
+  try {
+    const data = JSON.parse(e.dataTransfer.getData('application/json'))
+    if (data.type === props.type && data.id !== props.item.id) {
+      emit('drop', {
+        from: data,
+        to: { id: props.item.id, type: props.type, index: props.index }
+      })
+    }
+  } catch (err) {
+    console.error('拖拽数据解析失败:', err)
+  }
+}
 </script>
 
 <style lang="scss" scoped>
@@ -187,6 +250,18 @@ const childCount = computed(() => {
     border-color: #409EFF;
     background: #ecf5ff;
     box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.2);
+  }
+
+  // 拖拽状态
+  &.dragging {
+    opacity: 0.5;
+    border-style: dashed;
+  }
+
+  &.drag-over {
+    border-color: #67C23A;
+    border-style: dashed;
+    background: #f0f9eb;
   }
 
   // 不同类型的图标颜色

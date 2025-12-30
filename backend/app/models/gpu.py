@@ -24,6 +24,9 @@ class GPU(db.Model):
     status = db.Column(db.String(20), default='free')  # free, in_use, error
     description = db.Column(db.Text, nullable=True)
 
+    # 排序
+    sort_order = db.Column(db.Integer, default=0)  # 排序顺序
+
     # 时间戳
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -49,6 +52,7 @@ class GPU(db.Model):
             'status': self.status,
             'is_available': self.is_available,
             'description': self.description,
+            'sort_order': self.sort_order,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }

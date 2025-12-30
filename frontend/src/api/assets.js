@@ -47,6 +47,10 @@ export const assetsApi = {
     return request.delete(`/containers/${id}`)
   },
 
+  updateContainerSortOrder(items) {
+    return request.post('/containers/update-sort-order', { items })
+  },
+
   // 服务
   getServices(params) {
     return request.get('/services', { params })
@@ -62,6 +66,10 @@ export const assetsApi = {
 
   deleteService(id) {
     return request.delete(`/services/${id}`)
+  },
+
+  updateServiceSortOrder(items) {
+    return request.post('/services/update-sort-order', { items })
   },
 
   // GPU
@@ -87,6 +95,10 @@ export const assetsApi = {
 
   deleteGpu(id) {
     return request.delete(`/gpus/${id}`)
+  },
+
+  updateGpuSortOrder(items) {
+    return request.post('/gpus/update-sort-order', { items })
   },
 
   // 机房

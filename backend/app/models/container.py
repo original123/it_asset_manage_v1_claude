@@ -28,6 +28,9 @@ class Container(db.Model):
     status = db.Column(db.String(20), default='running')  # running, stopped, error
     description = db.Column(db.Text, nullable=True)
 
+    # 排序
+    sort_order = db.Column(db.Integer, default=0)  # 排序顺序
+
     # 时间戳
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -58,6 +61,7 @@ class Container(db.Model):
             'memory_usage': self.memory_usage,
             'status': self.status,
             'description': self.description,
+            'sort_order': self.sort_order,
             'service_count': self.service_count,
             'port_mappings': [pm.to_dict() for pm in self.port_mappings],
             'created_at': self.created_at.isoformat() if self.created_at else None,

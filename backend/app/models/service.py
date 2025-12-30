@@ -22,6 +22,9 @@ class Service(db.Model):
     health_check_url = db.Column(db.String(256), nullable=True)  # 健康检查URL
     description = db.Column(db.Text, nullable=True)
 
+    # 排序
+    sort_order = db.Column(db.Integer, default=0)  # 排序顺序
+
     # 时间戳
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -41,6 +44,7 @@ class Service(db.Model):
             'status': self.status,
             'health_check_url': self.health_check_url,
             'description': self.description,
+            'sort_order': self.sort_order,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }

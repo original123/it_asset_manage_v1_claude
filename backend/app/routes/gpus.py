@@ -196,3 +196,26 @@ def delete_gpu(id):
     db.session.commit()
 
     return api_response(None, 'GPU删除成功')
+
+
+@gpus_bp.route('/update-sort-order', methods=['POST'])
+@jwt_required()
+@admin_required
+def update_gpu_sort_order():
+    """批量更新GPU排序"""
+    data = get_request_json()
+    if not data or 'items' not in data:
+        return error_response('缺少items参数', 400, 400)
+
+    items = data['items']  # [{id: 1, sort_order: 0}, {id: 2, sort_order: 1}, ...]
+
+    for item in items:
+        gpu_id = item.get('id')
+        sort_order = item.get('sort_order')
+        if gpu_id is not None and sort_order is not None:
+            gpu = GPU.query.get(gpu_id)
+            if gpu:
+                gpu.sort_order = sort_order
+
+    db.session.commit()
+    return api_response(None, '排序更新成功')

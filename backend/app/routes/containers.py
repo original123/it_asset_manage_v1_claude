@@ -191,3 +191,31 @@ def delete_container(id):
     db.session.commit()
 
     return api_response(None, '容器删除成功')
+
+
+@containers_bp.route('/update-sort-order', methods=['POST'])
+@jwt_required()
+def update_sort_order():
+    """批量更新容器排序"""
+    user = get_current_user()
+
+    # 只有管理员可以更新排序
+    if not user.is_admin:
+        return error_response('无权限更新排序', 403, 403)
+
+    data = get_request_json()
+    if not data or 'items' not in data:
+        return error_response('缺少items参数', 400, 400)
+
+    items = data['items']  # [{id: 1, sort_order: 0}, {id: 2, sort_order: 1}, ...]
+
+    for item in items:
+        container_id = item.get('id')
+        sort_order = item.get('sort_order')
+        if container_id is not None and sort_order is not None:
+            container = Container.query.get(container_id)
+            if container:
+                container.sort_order = sort_order
+
+    db.session.commit()
+    return api_response(None, '排序更新成功')
