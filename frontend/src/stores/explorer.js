@@ -129,27 +129,22 @@ export const useExplorerStore = defineStore('explorer', () => {
   async function loadNavigationTree() {
     treeLoading.value = true
     try {
-      // 加载环境和机房配置
-      const [envRes, dcRes] = await Promise.all([
+      // 并行加载环境、机房配置和服务器列表
+      const [envRes, dcRes, serversRes] = await Promise.all([
         assetsApi.getEnvironments(),
-        assetsApi.getDatacenters()
+        assetsApi.getDatacenters(),
+        // 导航树只需要服务器基本信息，不需要子节点数据
+        assetsApi.getServersTree({ expand_level: 1 })
       ])
 
       if (envRes.code === 0) environments.value = envRes.data
-      console.log('Loaded environments:', environments.value)
       if (dcRes.code === 0) datacenters.value = dcRes.data
-      console.log('Loaded datacenters:', datacenters.value)
-
-      // 加载服务器树
-      const serversRes = await assetsApi.getServersTree({ expand_level: 3 })
-      console.log('Loaded servers tree raw:', serversRes.data)
 
       if (serversRes.code === 0) {
         // 根据分组方式构建导航树
         navigationTree.value = buildNavigationTree(serversRes.data)
-        console.log('Built navigation tree:', navigationTree.value)
-      } else {
-        console.error('Failed to load servers tree:', serversRes)
+        // 同时更新快捷访问数据，避免重复请求
+        updateQuickAccessFromServers(serversRes.data)
       }
     } catch (error) {
       console.error('Error in loadNavigationTree:', error)
@@ -226,7 +221,7 @@ export const useExplorerStore = defineStore('explorer', () => {
       if (!envNode.children.has(dcId)) {
         const dc = datacenters.value.find(d => d.id === dcId)
         envNode.children.set(dcId, {
-          id: `dc-${dcId}`,
+          id: `env-${envId}-dc-${dcId}`,  // 使用复合ID确保唯一性
           nodeId: dcId,
           name: dc?.name || '未知机房',
           type: 'datacenter',
@@ -283,7 +278,7 @@ export const useExplorerStore = defineStore('explorer', () => {
       if (!dcNode.children.has(envId)) {
         const env = environments.value.find(e => e.id === envId)
         dcNode.children.set(envId, {
-          id: `env-${envId}`,
+          id: `dc-${dcId}-env-${envId}`,  // 使用复合ID确保唯一性
           nodeId: envId,
           name: env?.name || '未知环境',
           type: 'environment',
@@ -319,23 +314,39 @@ export const useExplorerStore = defineStore('explorer', () => {
   async function navigateTo(nodeId, nodeType) {
     // 更新当前路径
     if (nodeType === 'environment' || nodeType === 'datacenter') {
-      // 根据节点类型确定路径深度
-      const nodeIndex = currentPath.value.indexOf(nodeId)
-      if (nodeIndex >= 0) {
-        // 回退到已存在的节点
-        currentPath.value = currentPath.value.slice(0, nodeIndex + 1)
-      } else {
-        // 添加新节点
-        currentPath.value.push(nodeId)
+      // 查找节点及其父路径
+      const pathToNode = findPathToNode(navigationTree.value, nodeId)
+      if (pathToNode.length > 0) {
+        currentPath.value = pathToNode
+        currentNode.value = findNodeById(navigationTree.value, nodeId)
+        // 加载该层级下的内容
+        await loadContentForPath()
       }
-      currentNode.value = findNodeById(navigationTree.value, nodeId)
-      // 加载该层级下的内容
-      await loadContentForPath()
     } else if (nodeType === 'server') {
-      // 导航到服务器详情
+      // 导航到服务器详情 - 需要同时更新路径
+      const pathToNode = findPathToNode(navigationTree.value, nodeId)
+      if (pathToNode.length > 0) {
+        currentPath.value = pathToNode
+      }
       const serverId = nodeId.replace('server-', '')
       await loadServerContent(parseInt(serverId))
     }
+  }
+
+  // 辅助函数：查找到指定节点的路径
+  function findPathToNode(nodes, targetId, currentPathArr = []) {
+    for (const node of nodes) {
+      if (node.id === targetId) {
+        return [...currentPathArr, node.id]
+      }
+      if (node.children && node.children.length > 0) {
+        const found = findPathToNode(node.children, targetId, [...currentPathArr, node.id])
+        if (found.length > 0) {
+          return found
+        }
+      }
+    }
+    return []
   }
 
   // 根据当前路径加载内容
@@ -366,45 +377,33 @@ export const useExplorerStore = defineStore('explorer', () => {
   async function loadServerContent(serverId) {
     loading.value = true
     try {
-      const res = await assetsApi.getServersTree({ expand_level: 3 })
+      // 使用单服务器API，而不是加载所有服务器
+      const res = await assetsApi.getServer(serverId)
       if (res.code === 0) {
-        const server = res.data.find(s => s.id === serverId)
-        if (server) {
-          currentNode.value = {
-            id: `server-${server.id}`,
-            nodeId: server.id,
-            name: server.name,
-            type: 'server',
-            data: server
-          }
+        const server = res.data
+        currentNode.value = {
+          id: `server-${server.id}`,
+          nodeId: server.id,
+          name: server.name,
+          type: 'server',
+          data: server
+        }
 
-          // 分离容器和GPU
-          const containers = []
-          const gpus = []
-          const services = []
+        // 单服务器API直接返回containers和gpus数组
+        const containers = server.containers || []
+        const gpus = server.gpus || []
+        const services = []
 
-          if (server.children) {
-            for (const child of server.children) {
-              if (child._type === 'container') {
-                containers.push(child)
-                // 收集服务
-                if (child.children) {
-                  for (const service of child.children) {
-                    if (service._type === 'service') {
-                      services.push({ ...service, container_name: child.name })
-                    }
-                  }
-                }
-              } else if (child._type === 'gpu') {
-                gpus.push(child)
-              }
+        // 从容器中收集服务
+        for (const container of containers) {
+          if (container.services) {
+            for (const service of container.services) {
+              services.push({ ...service, container_name: container.name })
             }
           }
-
-          currentContent.value = { containers, gpus, services }
-        } else {
-          console.warn('Server not found for ID:', serverId)
         }
+
+        currentContent.value = { containers, gpus, services }
       } else {
         console.error('Failed to load server content:', res)
       }
@@ -682,26 +681,25 @@ export const useExplorerStore = defineStore('explorer', () => {
     savePreferences()
   }
 
-  // 加载快捷访问数据
+  // 从服务器数据更新快捷访问（避免重复请求）
+  function updateQuickAccessFromServers(servers) {
+    // 离线服务器
+    quickAccess.value.offlineServers = servers
+      .filter(s => s.status === 'offline')
+      .slice(0, 5)
+
+    // 高负载服务器 (CPU或内存 > 80%)
+    quickAccess.value.highLoadServers = servers
+      .filter(s => (s.cpu_usage > 80 || s.memory_usage > 80))
+      .slice(0, 5)
+  }
+
+  // 加载快捷访问数据（仅在需要单独刷新时调用）
   async function loadQuickAccess() {
     try {
-      console.log('Loading quick access data...')
       const res = await assetsApi.getServersTree({ expand_level: 1 })
-      console.log('Quick access servers raw:', res.data)
       if (res.code === 0) {
-        const servers = res.data
-
-        // 离线服务器
-        quickAccess.value.offlineServers = servers
-          .filter(s => s.status === 'offline')
-          .slice(0, 5)
-        console.log('Offline servers:', quickAccess.value.offlineServers)
-
-        // 高负载服务器 (CPU或内存 > 80%)
-        quickAccess.value.highLoadServers = servers
-          .filter(s => (s.cpu_usage > 80 || s.memory_usage > 80))
-          .slice(0, 5)
-        console.log('High load servers:', quickAccess.value.highLoadServers)
+        updateQuickAccessFromServers(res.data)
       }
     } catch (e) {
       console.warn('加载快捷访问失败:', e)

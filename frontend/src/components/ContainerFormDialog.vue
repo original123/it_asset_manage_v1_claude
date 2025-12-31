@@ -16,6 +16,32 @@
 
       <el-row :gutter="16">
         <el-col :span="12">
+          <el-form-item label="使用人">
+            <el-select
+              v-model="form.assigned_user_id"
+              placeholder="请选择使用人"
+              style="width: 100%"
+              clearable
+              filterable
+            >
+              <el-option
+                v-for="user in userList"
+                :key="user.id"
+                :label="user.display_name"
+                :value="user.id"
+              />
+            </el-select>
+          </el-form-item>
+        </el-col>
+        <el-col :span="12">
+          <el-form-item label="用途">
+            <el-input v-model="form.purpose" placeholder="如: 2.0核保规则引擎开发" />
+          </el-form-item>
+        </el-col>
+      </el-row>
+
+      <el-row :gutter="16">
+        <el-col :span="12">
           <el-form-item label="镜像">
             <el-input v-model="form.image" placeholder="nginx:latest" />
           </el-form-item>
@@ -98,10 +124,11 @@
 </template>
 
 <script setup>
-import { ref, reactive, watch } from 'vue'
+import { ref, reactive, watch, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Plus, Delete } from '@element-plus/icons-vue'
 import { assetsApi } from '@/api/assets'
+import { usersApi } from '@/api/admin'
 
 const props = defineProps({
   modelValue: Boolean,
@@ -113,6 +140,7 @@ const emit = defineEmits(['update:modelValue', 'success'])
 
 const formRef = ref(null)
 const loading = ref(false)
+const userList = ref([])
 
 const form = reactive({
   name: '',
@@ -121,24 +149,45 @@ const form = reactive({
   cpu_limit: null,
   memory_limit_mb: null,
   description: '',
-  port_mappings: []
+  port_mappings: [],
+  assigned_user_id: null,
+  purpose: ''
 })
 
 const rules = {
   name: [{ required: true, message: '请输入容器名称', trigger: 'blur' }]
 }
 
+// 获取用户列表
+const fetchUsers = async () => {
+  try {
+    const res = await usersApi.getUsers({ page_size: 100 })
+    if (res.code === 0) {
+      userList.value = res.data || []
+    }
+  } catch (e) {
+    console.error('获取用户列表失败:', e)
+  }
+}
+
+onMounted(() => {
+  fetchUsers()
+})
+
 watch(() => props.modelValue, (val) => {
   if (val && props.container) {
     Object.assign(form, {
       ...props.container,
-      port_mappings: props.container.port_mappings?.map(pm => ({ ...pm })) || []
+      port_mappings: props.container.port_mappings?.map(pm => ({ ...pm })) || [],
+      assigned_user_id: props.container.assigned_user_id || null,
+      purpose: props.container.purpose || ''
     })
   } else if (val) {
     Object.assign(form, {
       name: '', image: '', status: 'running',
       cpu_limit: null, memory_limit_mb: null,
-      description: '', port_mappings: []
+      description: '', port_mappings: [],
+      assigned_user_id: null, purpose: ''
     })
   }
 })

@@ -254,11 +254,8 @@ onMounted(async () => {
   explorerStore.loadPreferences()
   explorerStore.loadState()
 
-  // 加载导航树
+  // 加载导航树（内部会同时更新快捷访问数据）
   await explorerStore.loadNavigationTree()
-
-  // 加载快捷访问
-  await explorerStore.loadQuickAccess()
 
   // 注册键盘快捷键
   document.addEventListener('keydown', handleKeydown)

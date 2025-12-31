@@ -142,8 +142,8 @@ function toggleSettings() {
 }
 
 function handleRefresh() {
+  // loadNavigationTree 内部会同时更新快捷访问数据
   explorerStore.loadNavigationTree()
-  explorerStore.loadQuickAccess()
 }
 
 function handleGroupingChange(mode) {

@@ -66,6 +66,8 @@ def create_container():
         name=data['name'],
         server_id=data['server_id'],
         owner_id=user.id,
+        assigned_user_id=data.get('assigned_user_id'),
+        purpose=data.get('purpose'),
         image=data.get('image'),
         container_id=data.get('container_id'),
         cpu_limit=data.get('cpu_limit'),
@@ -122,7 +124,8 @@ def update_container(id):
 
     updatable_fields = [
         'name', 'image', 'container_id', 'cpu_limit', 'memory_limit_mb',
-        'cpu_usage', 'memory_usage', 'status', 'description'
+        'cpu_usage', 'memory_usage', 'status', 'description',
+        'assigned_user_id', 'purpose'
     ]
 
     for field in updatable_fields:

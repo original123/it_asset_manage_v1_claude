@@ -13,16 +13,16 @@
       <!-- 单选显示详情 -->
       <div class="detail-item">
         <span class="detail-label">名称</span>
-        <span class="detail-value">{{ singleSelection.data?.name || singleSelection.name }}</span>
+        <span class="detail-value">{{ singleSelection.name }}</span>
       </div>
-      <div class="detail-item" v-if="singleSelection.data?.ip">
+      <div class="detail-item" v-if="singleSelection.ip">
         <span class="detail-label">IP</span>
-        <span class="detail-value">{{ singleSelection.data.ip }}</span>
+        <span class="detail-value">{{ singleSelection.ip }}</span>
       </div>
-      <div class="detail-item" v-if="singleSelection.data?.status">
+      <div class="detail-item" v-if="singleSelection.status">
         <span class="detail-label">状态</span>
-        <el-tag :type="getStatusType(singleSelection.data.status)" size="small">
-          {{ getStatusText(singleSelection.data.status) }}
+        <el-tag :type="getStatusType(singleSelection.status)" size="small">
+          {{ getStatusText(singleSelection.status) }}
         </el-tag>
       </div>
     </div>
@@ -59,18 +59,55 @@
         删除
       </el-button>
     </div>
+
+    <!-- 容器编辑弹窗 -->
+    <ContainerFormDialog
+      v-model="containerDialogVisible"
+      :container="editingContainer"
+      :server="explorerStore.currentNode?.data"
+      @success="handleDialogSuccess"
+    />
+
+    <!-- 服务编辑弹窗 -->
+    <ServiceFormDialog
+      v-model="serviceDialogVisible"
+      :service="editingService"
+      :container="parentContainer"
+      @success="handleDialogSuccess"
+    />
+
+    <!-- GPU编辑弹窗 -->
+    <GPUFormDialog
+      v-model="gpuDialogVisible"
+      :gpu="editingGpu"
+      :server="explorerStore.currentNode?.data"
+      @success="handleDialogSuccess"
+    />
   </div>
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { View, Edit, Delete } from '@element-plus/icons-vue'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import { useExplorerStore } from '@/stores/explorer'
 import { useAuthStore } from '@/stores/auth'
+import { assetsApi } from '@/api/assets'
+import ContainerFormDialog from '@/components/ContainerFormDialog.vue'
+import ServiceFormDialog from '@/components/ServiceFormDialog.vue'
+import GPUFormDialog from '@/components/GPUFormDialog.vue'
 
 const explorerStore = useExplorerStore()
 const authStore = useAuthStore()
+
+// ========== 弹窗状态 ==========
+const containerDialogVisible = ref(false)
+const serviceDialogVisible = ref(false)
+const gpuDialogVisible = ref(false)
+const editingContainer = ref(null)
+const editingService = ref(null)
+const editingGpu = ref(null)
+const parentContainer = ref(null)
 
 // 单选项
 const singleSelection = computed(() => {
@@ -104,30 +141,58 @@ function getStatusText(status) {
   return map[status] || status
 }
 
-// 查看详情
+// 查看详情 (与编辑相同，打开弹窗)
 function handleView() {
-  // TODO: 打开详情弹窗
-  console.log('查看详情:', singleSelection.value)
+  if (singleSelection.value) {
+    openEditDialog(singleSelection.value.type, singleSelection.value)
+  }
 }
 
 // 编辑
 function handleEdit() {
-  // TODO: 打开编辑弹窗
-  console.log('编辑:', singleSelection.value)
+  if (singleSelection.value) {
+    openEditDialog(singleSelection.value.type, singleSelection.value)
+  }
+}
+
+// 打开编辑弹窗
+function openEditDialog(type, data) {
+  if (type === 'container') {
+    editingContainer.value = data
+    containerDialogVisible.value = true
+  } else if (type === 'service') {
+    // 找到服务所属的容器
+    const containerName = data.container_name
+    const container = explorerStore.currentContent.containers.find(c => c.name === containerName)
+    parentContainer.value = container || null
+    editingService.value = data
+    serviceDialogVisible.value = true
+  } else if (type === 'gpu') {
+    editingGpu.value = data
+    gpuDialogVisible.value = true
+  }
 }
 
 // 批量编辑
 function handleBatchEdit() {
-  // TODO: 打开批量编辑弹窗
-  console.log('批量编辑:', explorerStore.selectedItems)
+  // TODO: 实现批量编辑弹窗
+  ElMessage.info('批量编辑功能开发中...')
+}
+
+// 弹窗保存成功后刷新
+async function handleDialogSuccess() {
+  if (explorerStore.currentNode?.type === 'server') {
+    await explorerStore.loadServerContent(explorerStore.currentNode.nodeId)
+  }
+  explorerStore.clearSelection()
 }
 
 // 删除
 async function handleDelete() {
   const count = explorerStore.selectionCount
   const message = count === 1
-    ? `确定要删除 "${singleSelection.value?.data?.name || singleSelection.value?.name}" 吗?`
-    : `确定要删除选中的 ${count} 项吗?`
+    ? `确定要删除 "${singleSelection.value?.name}" 吗？此操作不可恢复。`
+    : `确定要删除选中的 ${count} 项吗？此操作不可恢复。`
 
   try {
     await ElMessageBox.confirm(message, '确认删除', {
@@ -136,8 +201,43 @@ async function handleDelete() {
       type: 'warning'
     })
 
-    // TODO: 调用删除API
-    ElMessage.success('删除成功')
+    // 执行删除
+    const selectedItems = [...explorerStore.selectedItems]
+    let successCount = 0
+    let failCount = 0
+
+    for (const item of selectedItems) {
+      try {
+        let res
+        if (item.type === 'container') {
+          res = await assetsApi.deleteContainer(item.id)
+        } else if (item.type === 'service') {
+          res = await assetsApi.deleteService(item.id)
+        } else if (item.type === 'gpu') {
+          res = await assetsApi.deleteGpu(item.id)
+        }
+
+        if (res && res.code === 0) {
+          successCount++
+        } else {
+          failCount++
+        }
+      } catch (e) {
+        failCount++
+      }
+    }
+
+    if (successCount > 0) {
+      ElMessage.success(`成功删除 ${successCount} 项`)
+      // 刷新内容
+      if (explorerStore.currentNode?.type === 'server') {
+        await explorerStore.loadServerContent(explorerStore.currentNode.nodeId)
+      }
+    }
+    if (failCount > 0) {
+      ElMessage.error(`${failCount} 项删除失败`)
+    }
+
     explorerStore.clearSelection()
   } catch {
     // 取消删除

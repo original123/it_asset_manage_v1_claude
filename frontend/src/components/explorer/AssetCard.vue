@@ -27,6 +27,17 @@
           <span v-if="statusText" class="status-dot" :class="statusClass" />
           <span class="info-text">{{ cardSubtitle }}</span>
         </div>
+        <!-- 容器专属：显示使用人和用途 -->
+        <template v-if="type === 'container'">
+          <div class="card-extra" v-if="item.assigned_user_name">
+            <el-icon :size="12"><User /></el-icon>
+            <span>{{ item.assigned_user_name }}</span>
+          </div>
+          <div class="card-extra purpose" v-if="item.purpose">
+            <el-icon :size="12"><Document /></el-icon>
+            <span>{{ item.purpose }}</span>
+          </div>
+        </template>
       </div>
       <el-tag
         v-if="item.status && type === 'server'"
@@ -47,6 +58,15 @@
       </div>
       <div class="list-name">{{ item.name }}</div>
       <div class="list-info">{{ cardSubtitle }}</div>
+      <!-- 容器专属：列表模式显示使用人 -->
+      <div class="list-user" v-if="type === 'container' && item.assigned_user_name">
+        <el-icon :size="12"><User /></el-icon>
+        {{ item.assigned_user_name }}
+      </div>
+      <!-- 容器专属：列表模式显示用途 -->
+      <div class="list-purpose" v-if="type === 'container' && item.purpose">
+        {{ item.purpose }}
+      </div>
       <el-tag
         v-if="item.status"
         :type="statusTagType"
@@ -65,7 +85,7 @@
 <script setup>
 import { computed, ref } from 'vue'
 import {
-  FolderOpened, Location, Monitor, Box, Setting, Cpu
+  FolderOpened, Location, Monitor, Box, Setting, Cpu, User, Document
 } from '@element-plus/icons-vue'
 import { useExplorerStore } from '@/stores/explorer'
 
@@ -342,6 +362,29 @@ function handleDrop(e) {
         white-space: nowrap;
       }
     }
+
+    .card-extra {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 12px;
+      color: #606266;
+      margin-top: 4px;
+
+      .el-icon {
+        color: #909399;
+      }
+
+      span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      &.purpose {
+        color: #909399;
+      }
+    }
   }
 
   .card-status {
@@ -412,13 +455,41 @@ function handleDrop(e) {
     }
 
     .list-info {
-      width: 150px;
+      width: 120px;
       font-size: 13px;
       color: #909399;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
       margin-right: 12px;
+    }
+
+    .list-user {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      width: 80px;
+      font-size: 12px;
+      color: #606266;
+      margin-right: 12px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+
+      .el-icon {
+        color: #909399;
+        flex-shrink: 0;
+      }
+    }
+
+    .list-purpose {
+      width: 150px;
+      font-size: 12px;
+      color: #909399;
+      margin-right: 12px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .list-status {

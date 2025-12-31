@@ -12,6 +12,10 @@ class Container(db.Model):
     server_id = db.Column(db.Integer, db.ForeignKey('servers.id'), nullable=False)
     owner_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
 
+    # 使用人和用途
+    assigned_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)  # 使用人
+    purpose = db.Column(db.String(200), nullable=True)  # 用途简介
+
     # 容器配置
     image = db.Column(db.String(256), nullable=True)  # Docker镜像
     container_id = db.Column(db.String(64), nullable=True)  # Docker容器ID
@@ -38,6 +42,7 @@ class Container(db.Model):
     # 关联
     port_mappings = db.relationship('PortMapping', backref='container', lazy='dynamic', cascade='all, delete-orphan')
     services = db.relationship('Service', backref='container', lazy='dynamic', cascade='all, delete-orphan')
+    assigned_user = db.relationship('User', foreign_keys=[assigned_user_id], backref='assigned_containers')
 
     @property
     def service_count(self):
@@ -53,6 +58,9 @@ class Container(db.Model):
             'server_name': self.server.name if self.server else None,
             'owner_id': self.owner_id,
             'owner_name': self.owner.display_name if self.owner else None,
+            'assigned_user_id': self.assigned_user_id,
+            'assigned_user_name': self.assigned_user.display_name if self.assigned_user else None,
+            'purpose': self.purpose,
             'image': self.image,
             'container_id': self.container_id,
             'cpu_limit': self.cpu_limit,

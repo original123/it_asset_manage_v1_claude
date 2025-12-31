@@ -87,9 +87,10 @@ const isExpanded = computed(() => {
   return explorerStore.expandedNodes.includes(props.node.id)
 })
 
-// 是否选中
+// 是否选中 - 只有路径的最后一个节点才是选中状态
 const isSelected = computed(() => {
-  return explorerStore.currentPath.includes(props.node.id)
+  const path = explorerStore.currentPath
+  return path.length > 0 && path[path.length - 1] === props.node.id
 })
 
 // 节点图标
