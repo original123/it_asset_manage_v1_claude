@@ -151,13 +151,13 @@ function handleGroupingChange(mode) {
 }
 
 function filterByStatus(status) {
-  // TODO: 实现按状态筛选
-  console.log('Filter by status:', status)
+  if (status === 'offline') {
+    explorerStore.filterByOffline()
+  }
 }
 
 function filterByHighLoad() {
-  // TODO: 实现高负载筛选
-  console.log('Filter by high load')
+  explorerStore.filterByHighLoad()
 }
 
 function navigateToRecent(item) {

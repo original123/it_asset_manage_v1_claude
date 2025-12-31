@@ -45,14 +45,16 @@
     </div>
 
     <!-- 子节点 -->
-    <div v-if="isExpanded && hasChildren" class="node-children">
-      <TreeNode
-        v-for="child in node.children"
-        :key="child.id"
-        :node="child"
-        :level="level + 1"
-      />
-    </div>
+    <Transition name="expand">
+      <div v-if="isExpanded && hasChildren" class="node-children">
+        <TreeNode
+          v-for="child in node.children"
+          :key="child.id"
+          :node="child"
+          :level="level + 1"
+        />
+      </div>
+    </Transition>
   </div>
 </template>
 
@@ -253,7 +255,26 @@ function handleDoubleClick() {
   }
 
   .node-children {
-    // 子节点样式
+    overflow: hidden;
   }
+}
+
+// 展开/折叠动画
+.expand-enter-active,
+.expand-leave-active {
+  transition: all 0.2s ease-out;
+  overflow: hidden;
+}
+
+.expand-enter-from,
+.expand-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+
+.expand-enter-to,
+.expand-leave-from {
+  opacity: 1;
+  transform: translateY(0);
 }
 </style>

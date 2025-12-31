@@ -40,8 +40,44 @@
 
     <!-- 内容主体 -->
     <div class="content-body" @click.self="handleBackgroundClick">
+      <!-- 筛选模式优先：显示筛选结果 -->
+      <template v-if="explorerStore.isFilterMode">
+        <div class="filter-content">
+          <div class="filter-header">
+            <div class="filter-info">
+              <el-icon :size="24"><Filter /></el-icon>
+              <span class="filter-title">{{ filterTitle }}</span>
+              <span class="filter-count">({{ explorerStore.filteredServers.length }})</span>
+            </div>
+            <el-button size="small" @click="explorerStore.clearFilter">
+              <el-icon><Close /></el-icon>
+              清除筛选
+            </el-button>
+          </div>
+          <TransitionGroup
+            name="card"
+            tag="div"
+            :class="['items-grid', explorerStore.viewMode]"
+          >
+            <AssetCard
+              v-for="server in explorerStore.filteredServers"
+              :key="server.id"
+              :item="server"
+              type="server"
+              :selected="isSelected(`server-${server.id}`, 'server')"
+              @click="handleFilteredServerClick(server, $event)"
+              @dblclick="handleFilteredServerDblClick(server)"
+              @contextmenu.prevent.stop="handleContextMenu($event, server, 'server')"
+            />
+          </TransitionGroup>
+          <div v-if="explorerStore.filteredServers.length === 0" class="empty-content">
+            <el-empty :description="emptyFilterMessage" />
+          </div>
+        </div>
+      </template>
+
       <!-- 服务器内容：容器、GPU、服务 -->
-      <template v-if="explorerStore.currentNode?.type === 'server'">
+      <template v-else-if="explorerStore.currentNode?.type === 'server'">
         <!-- 容器分组 -->
         <div class="content-section" v-if="sortedContainers.length > 0">
           <div class="section-header">
@@ -49,7 +85,11 @@
             <span>容器 ({{ sortedContainers.length }})</span>
             <span class="drag-hint" v-if="authStore.isAdmin">拖拽可排序</span>
           </div>
-          <div :class="['items-grid', explorerStore.viewMode]">
+          <TransitionGroup
+            name="card"
+            tag="div"
+            :class="['items-grid', explorerStore.viewMode]"
+          >
             <AssetCard
               v-for="(container, idx) in sortedContainers"
               :key="container.id"
@@ -63,7 +103,7 @@
               @contextmenu.prevent.stop="handleContextMenu($event, container, 'container')"
               @drop="handleDrop($event, 'container')"
             />
-          </div>
+          </TransitionGroup>
         </div>
 
         <!-- GPU 分组 -->
@@ -73,7 +113,11 @@
             <span>GPU ({{ sortedGpus.length }})</span>
             <span class="drag-hint" v-if="authStore.isAdmin">拖拽可排序</span>
           </div>
-          <div :class="['items-grid', explorerStore.viewMode]">
+          <TransitionGroup
+            name="card"
+            tag="div"
+            :class="['items-grid', explorerStore.viewMode]"
+          >
             <AssetCard
               v-for="(gpu, idx) in sortedGpus"
               :key="gpu.id"
@@ -87,7 +131,7 @@
               @contextmenu.prevent.stop="handleContextMenu($event, gpu, 'gpu')"
               @drop="handleDrop($event, 'gpu')"
             />
-          </div>
+          </TransitionGroup>
         </div>
 
         <!-- 服务分组 -->
@@ -97,7 +141,11 @@
             <span>服务 ({{ sortedServices.length }})</span>
             <span class="drag-hint" v-if="authStore.isAdmin">拖拽可排序</span>
           </div>
-          <div :class="['items-grid', explorerStore.viewMode]">
+          <TransitionGroup
+            name="card"
+            tag="div"
+            :class="['items-grid', explorerStore.viewMode]"
+          >
             <AssetCard
               v-for="(service, idx) in sortedServices"
               :key="service.id"
@@ -111,7 +159,7 @@
               @contextmenu.prevent.stop="handleContextMenu($event, service, 'service')"
               @drop="handleDrop($event, 'service')"
             />
-          </div>
+          </TransitionGroup>
         </div>
 
         <!-- 空状态 -->
@@ -130,7 +178,11 @@
       <!-- 环境/机房内容：显示子节点卡片 -->
       <template v-else-if="explorerStore.currentNode">
         <div class="folder-content">
-          <div :class="['items-grid', explorerStore.viewMode]">
+          <TransitionGroup
+            name="card"
+            tag="div"
+            :class="['items-grid', explorerStore.viewMode]"
+          >
             <AssetCard
               v-for="child in getCurrentChildren"
               :key="child.id"
@@ -141,7 +193,7 @@
               @dblclick="handleItemDblClick(child, child.type)"
               @contextmenu.prevent.stop="handleContextMenu($event, child, child.type)"
             />
-          </div>
+          </TransitionGroup>
         </div>
       </template>
 
@@ -211,7 +263,7 @@
 import { computed, ref } from 'vue'
 import {
   FolderOpened, Monitor, Box, Cpu, Setting,
-  Sort, Refresh, Location
+  Sort, Refresh, Location, Filter, Close
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useExplorerStore } from '@/stores/explorer'
@@ -252,7 +304,7 @@ function getTitleIcon(type) {
     service: Setting,
     gpu: Cpu
   }
-  return icons[type] || Folder
+  return icons[type] || FolderOpened
 }
 
 // 获取服务器副标题
@@ -327,6 +379,42 @@ const offlineCount = computed(() => {
   countOffline(explorerStore.navigationTree)
   return count
 })
+
+// 筛选标题
+const filterTitle = computed(() => {
+  const mode = explorerStore.filterMode
+  if (mode === 'offline') return '离线服务器'
+  if (mode === 'highLoad') return '高负载服务器'
+  return '筛选结果'
+})
+
+// 筛选空状态消息
+const emptyFilterMessage = computed(() => {
+  const mode = explorerStore.filterMode
+  if (mode === 'offline') return '没有离线的服务器'
+  if (mode === 'highLoad') return '没有高负载的服务器'
+  return '没有匹配的结果'
+})
+
+// 筛选结果点击
+function handleFilteredServerClick(server, event) {
+  const serverItem = {
+    id: `server-${server.id}`,
+    type: 'server',
+    ...server
+  }
+  if (event.ctrlKey || event.metaKey) {
+    explorerStore.selectItem(serverItem, true)
+  } else {
+    explorerStore.selectItem(serverItem, false)
+  }
+}
+
+// 筛选结果双击：进入服务器详情
+function handleFilteredServerDblClick(server) {
+  explorerStore.clearFilter()
+  explorerStore.loadServerContent(server.id)
+}
 
 // 检查是否选中
 function isSelected(id, type) {
@@ -684,6 +772,7 @@ async function handleDrop({ from, to }, type) {
 .items-grid {
   display: grid;
   gap: 16px;
+  transition: all 0.3s ease;
 
   &.grid {
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -692,6 +781,43 @@ async function handleDrop({ from, to }, type) {
   &.list {
     grid-template-columns: 1fr;
   }
+}
+
+// 视图切换动画
+.view-fade-enter-active,
+.view-fade-leave-active {
+  transition: all 0.25s ease;
+}
+
+.view-fade-enter-from {
+  opacity: 0;
+  transform: scale(0.95);
+}
+
+.view-fade-leave-to {
+  opacity: 0;
+  transform: scale(0.95);
+}
+
+// 卡片列表动画
+.card-move,
+.card-enter-active,
+.card-leave-active {
+  transition: all 0.3s ease;
+}
+
+.card-enter-from {
+  opacity: 0;
+  transform: translateY(20px);
+}
+
+.card-leave-to {
+  opacity: 0;
+  transform: translateY(-20px);
+}
+
+.card-leave-active {
+  position: absolute;
 }
 
 .empty-content {
@@ -753,5 +879,41 @@ async function handleDrop({ from, to }, type) {
 
 .folder-content {
   min-height: 200px;
+}
+
+.filter-content {
+  min-height: 200px;
+
+  .filter-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+    padding: 12px 16px;
+    background: linear-gradient(135deg, #f5f7fa 0%, #e4e7eb 100%);
+    border-radius: 8px;
+    border: 1px solid #dcdfe6;
+
+    .filter-info {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+
+      .el-icon {
+        color: #409EFF;
+      }
+
+      .filter-title {
+        font-size: 16px;
+        font-weight: 600;
+        color: #303133;
+      }
+
+      .filter-count {
+        font-size: 14px;
+        color: #909399;
+      }
+    }
+  }
 }
 </style>

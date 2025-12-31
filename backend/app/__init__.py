@@ -51,6 +51,7 @@ def register_blueprints(app):
     from app.routes.search import search_bp
     from app.routes.users import users_bp
     from app.routes.import_export import import_export_bp
+    from app.routes.preferences import preferences_bp
 
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(servers_bp, url_prefix='/api/servers')
@@ -63,6 +64,7 @@ def register_blueprints(app):
     app.register_blueprint(search_bp, url_prefix='/api/search')
     app.register_blueprint(users_bp, url_prefix='/api/users')
     app.register_blueprint(import_export_bp, url_prefix='/api/import-export')
+    app.register_blueprint(preferences_bp, url_prefix='/api/user/preferences')
 
 
 def register_error_handlers(app):

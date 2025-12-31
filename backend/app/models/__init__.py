@@ -8,6 +8,7 @@ from app.models.port_mapping import PortMapping
 from app.models.service import Service
 from app.models.gpu import GPU
 from app.models.audit_log import AuditLog
+from app.models.user_preference import UserPreference
 
 __all__ = [
     'User',
@@ -18,5 +19,6 @@ __all__ = [
     'PortMapping',
     'Service',
     'GPU',
-    'AuditLog'
+    'AuditLog',
+    'UserPreference'
 ]

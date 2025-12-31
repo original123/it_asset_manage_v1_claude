@@ -10,14 +10,50 @@
       </div>
 
       <div class="toolbar-center">
-        <el-input
+        <el-autocomplete
           v-model="searchKeyword"
+          :fetch-suggestions="fetchSuggestions"
           placeholder="搜索资产... (Ctrl+K)"
-          prefix-icon="Search"
           clearable
           class="search-input"
+          :trigger-on-focus="true"
+          :debounce="300"
+          @select="handleSelectSuggestion"
           @keyup.enter="handleSearch"
-        />
+        >
+          <template #prefix>
+            <el-icon><Search /></el-icon>
+          </template>
+          <template #default="{ item }">
+            <div class="search-suggestion-item">
+              <el-icon v-if="item.type === 'history'" class="suggestion-icon history">
+                <Clock />
+              </el-icon>
+              <el-icon v-else-if="item.type === 'server'" class="suggestion-icon server">
+                <Monitor />
+              </el-icon>
+              <el-icon v-else-if="item.type === 'container'" class="suggestion-icon container">
+                <Box />
+              </el-icon>
+              <el-icon v-else class="suggestion-icon">
+                <Document />
+              </el-icon>
+              <div class="suggestion-content">
+                <span class="suggestion-name">{{ item.name }}</span>
+                <span class="suggestion-desc">{{ item.description }}</span>
+              </div>
+              <el-button
+                v-if="item.type === 'history'"
+                type="text"
+                size="small"
+                class="remove-history-btn"
+                @click.stop="removeHistoryItem(item.value)"
+              >
+                <el-icon><Delete /></el-icon>
+              </el-button>
+            </div>
+          </template>
+        </el-autocomplete>
       </div>
 
       <div class="toolbar-right">
@@ -122,10 +158,11 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
-import { FolderOpened, Search, List, Grid, Plus } from '@element-plus/icons-vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { FolderOpened, Search, List, Grid, Plus, Clock, Delete, Monitor, Box, Document } from '@element-plus/icons-vue'
 import { useExplorerStore } from '@/stores/explorer'
 import { useAuthStore } from '@/stores/auth'
+import { assetsApi } from '@/api/assets'
 import NavigationPanel from './NavigationPanel.vue'
 import Breadcrumb from './Breadcrumb.vue'
 import ContentArea from './ContentArea.vue'
@@ -140,6 +177,140 @@ const authStore = useAuthStore()
 const searchKeyword = ref('')
 const filterEnvironment = ref(null)
 const filterDatacenter = ref(null)
+
+// 搜索增强
+const searchSuggestions = ref([])
+const searchHistory = ref([])
+const showSearchDropdown = ref(false)
+const searchLoading = ref(false)
+const SEARCH_HISTORY_KEY = 'asset_search_history'
+const MAX_HISTORY_ITEMS = 10
+
+// 加载搜索历史
+function loadSearchHistory() {
+  try {
+    const saved = localStorage.getItem(SEARCH_HISTORY_KEY)
+    if (saved) {
+      searchHistory.value = JSON.parse(saved)
+    }
+  } catch (e) {
+    console.warn('加载搜索历史失败:', e)
+  }
+}
+
+// 保存搜索历史
+function saveSearchHistory(keyword) {
+  if (!keyword || keyword.trim().length < 2) return
+  const trimmed = keyword.trim()
+  // 移除重复项
+  searchHistory.value = searchHistory.value.filter(h => h !== trimmed)
+  // 添加到开头
+  searchHistory.value.unshift(trimmed)
+  // 限制数量
+  if (searchHistory.value.length > MAX_HISTORY_ITEMS) {
+    searchHistory.value = searchHistory.value.slice(0, MAX_HISTORY_ITEMS)
+  }
+  // 保存到 localStorage
+  try {
+    localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(searchHistory.value))
+  } catch (e) {
+    console.warn('保存搜索历史失败:', e)
+  }
+}
+
+// 清除搜索历史
+function clearSearchHistory() {
+  searchHistory.value = []
+  localStorage.removeItem(SEARCH_HISTORY_KEY)
+}
+
+// 删除单条搜索历史
+function removeHistoryItem(keyword) {
+  searchHistory.value = searchHistory.value.filter(h => h !== keyword)
+  try {
+    localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(searchHistory.value))
+  } catch (e) {
+    console.warn('保存搜索历史失败:', e)
+  }
+}
+
+// 获取搜索建议
+async function fetchSuggestions(queryString, cb) {
+  if (!queryString || queryString.trim().length < 2) {
+    // 显示搜索历史
+    const historyItems = searchHistory.value.map(h => ({
+      value: h,
+      type: 'history',
+      name: h,
+      description: '搜索历史'
+    }))
+    cb(historyItems)
+    return
+  }
+
+  searchLoading.value = true
+  try {
+    const res = await assetsApi.quickSearch(queryString.trim())
+    if (res.code === 0 && res.data) {
+      const suggestions = res.data.map(item => ({
+        value: item.name,
+        type: item.type,
+        id: item.id,
+        name: item.name,
+        description: item.description
+      }))
+      cb(suggestions)
+    } else {
+      cb([])
+    }
+  } catch (e) {
+    console.warn('获取搜索建议失败:', e)
+    cb([])
+  } finally {
+    searchLoading.value = false
+  }
+}
+
+// 选择搜索建议
+async function handleSelectSuggestion(item) {
+  if (!item) return
+
+  // 保存到搜索历史
+  saveSearchHistory(item.value)
+
+  // 如果是资产建议，直接导航到该资产
+  if (item.type === 'server') {
+    await explorerStore.loadServerContent(item.id)
+  } else if (item.type === 'container') {
+    // 容器需要先加载所属服务器
+    // 暂时只执行搜索
+    executeSearch(item.value)
+  } else if (item.type === 'history') {
+    // 历史记录，执行搜索
+    searchKeyword.value = item.value
+    executeSearch(item.value)
+  } else {
+    executeSearch(item.value)
+  }
+}
+
+// 执行搜索
+async function executeSearch(keyword) {
+  if (!keyword || keyword.trim().length < 1) return
+
+  const trimmed = keyword.trim()
+  saveSearchHistory(trimmed)
+
+  try {
+    const res = await assetsApi.search(trimmed)
+    if (res.code === 0 && res.data) {
+      // 将搜索结果设置到 explorer store 中
+      explorerStore.setSearchResults(res.data, trimmed)
+    }
+  } catch (e) {
+    console.warn('搜索失败:', e)
+  }
+}
 
 // 弹窗状态
 const serverFormVisible = ref(false)
@@ -234,8 +405,7 @@ function handleKeydown(e) {
 }
 
 function handleSearch() {
-  // TODO: 实现搜索功能
-  console.log('搜索:', searchKeyword.value)
+  executeSearch(searchKeyword.value)
 }
 
 function showAddServerDialog() {
@@ -250,6 +420,9 @@ async function handleRefresh() {
 }
 
 onMounted(async () => {
+  // 加载搜索历史
+  loadSearchHistory()
+
   // 加载用户偏好
   explorerStore.loadPreferences()
   explorerStore.loadState()
@@ -365,5 +538,63 @@ onUnmounted(() => {
   flex-direction: column;
   overflow: hidden;
   background: #f5f7fa;
+}
+
+// 搜索建议样式
+.search-suggestion-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  gap: 10px;
+
+  .suggestion-icon {
+    font-size: 16px;
+    color: #909399;
+
+    &.history {
+      color: #909399;
+    }
+
+    &.server {
+      color: #409EFF;
+    }
+
+    &.container {
+      color: #67C23A;
+    }
+  }
+
+  .suggestion-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    overflow: hidden;
+
+    .suggestion-name {
+      font-size: 14px;
+      color: #303133;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .suggestion-desc {
+      font-size: 12px;
+      color: #909399;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+  }
+
+  .remove-history-btn {
+    padding: 4px;
+    color: #909399;
+
+    &:hover {
+      color: #F56C6C;
+    }
+  }
 }
 </style>

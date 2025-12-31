@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { assetsApi } from '@/api/assets'
+import { authApi } from '@/api/auth'
 
 export const useExplorerStore = defineStore('explorer', () => {
   // ========== 导航状态 ==========
@@ -46,6 +47,12 @@ export const useExplorerStore = defineStore('explorer', () => {
     highLoadServers: [],
     recentAccess: []
   })
+
+  // ========== 快捷访问筛选模式 ==========
+  // 筛选模式：null | 'offline' | 'highLoad'
+  const filterMode = ref(null)
+  // 筛选结果（服务器列表）
+  const filteredServers = ref([])
 
   // ========== 用户偏好 ==========
   const preferences = ref({
@@ -617,23 +624,38 @@ export const useExplorerStore = defineStore('explorer', () => {
     currentContent.value = { containers: [], gpus: [], services: [] }
   }
 
-  // 保存用户偏好
-  function savePreferences() {
+  // 保存用户偏好（同时保存到 localStorage 和后端）
+  async function savePreferences() {
+    const prefs = {
+      grouping_mode: groupingMode.value,
+      view_mode: viewMode.value,
+      panel_width: preferences.value.panelWidth,
+      show_detail_bar: preferences.value.showDetailBar
+    }
+
+    // 保存到 localStorage（快速恢复）
     try {
-      const prefs = {
+      localStorage.setItem(STORAGE_KEY_PREFS, JSON.stringify({
         viewMode: viewMode.value,
         groupingMode: groupingMode.value,
         panelWidth: preferences.value.panelWidth,
         showDetailBar: preferences.value.showDetailBar
-      }
-      localStorage.setItem(STORAGE_KEY_PREFS, JSON.stringify(prefs))
+      }))
     } catch (e) {
-      console.warn('保存偏好失败:', e)
+      console.warn('保存偏好到localStorage失败:', e)
+    }
+
+    // 保存到后端（持久化）
+    try {
+      await authApi.updatePreferences(prefs)
+    } catch (e) {
+      console.warn('保存偏好到后端失败:', e)
     }
   }
 
-  // 加载用户偏好
-  function loadPreferences() {
+  // 加载用户偏好（优先从后端加载，失败时从 localStorage 恢复）
+  async function loadPreferences() {
+    // 先从 localStorage 快速恢复
     try {
       const saved = localStorage.getItem(STORAGE_KEY_PREFS)
       if (saved) {
@@ -644,7 +666,21 @@ export const useExplorerStore = defineStore('explorer', () => {
         if (prefs.showDetailBar !== undefined) preferences.value.showDetailBar = prefs.showDetailBar
       }
     } catch (e) {
-      console.warn('加载偏好失败:', e)
+      console.warn('从localStorage加载偏好失败:', e)
+    }
+
+    // 然后从后端加载（以后端为准）
+    try {
+      const res = await authApi.getPreferences()
+      if (res && res.code === 0 && res.data) {
+        const prefs = res.data
+        if (prefs.view_mode) viewMode.value = prefs.view_mode
+        if (prefs.grouping_mode) groupingMode.value = prefs.grouping_mode
+        if (prefs.panel_width) preferences.value.panelWidth = prefs.panel_width
+        if (prefs.show_detail_bar !== undefined) preferences.value.showDetailBar = prefs.show_detail_bar
+      }
+    } catch (e) {
+      console.warn('从后端加载偏好失败:', e)
     }
   }
 
@@ -706,6 +742,97 @@ export const useExplorerStore = defineStore('explorer', () => {
     }
   }
 
+  // ========== 快捷访问筛选方法 ==========
+
+  // 按离线状态筛选
+  function filterByOffline() {
+    filterMode.value = 'offline'
+    filteredServers.value = quickAccess.value.offlineServers
+    // 清空当前路径，显示筛选结果
+    currentPath.value = []
+    currentNode.value = {
+      id: 'filter-offline',
+      name: '离线服务器',
+      type: 'filter',
+      filterType: 'offline'
+    }
+    currentContent.value = { containers: [], gpus: [], services: [] }
+  }
+
+  // 按高负载筛选
+  function filterByHighLoad() {
+    filterMode.value = 'highLoad'
+    filteredServers.value = quickAccess.value.highLoadServers
+    // 清空当前路径，显示筛选结果
+    currentPath.value = []
+    currentNode.value = {
+      id: 'filter-highLoad',
+      name: '高负载服务器',
+      type: 'filter',
+      filterType: 'highLoad'
+    }
+    currentContent.value = { containers: [], gpus: [], services: [] }
+  }
+
+  // 清除筛选模式
+  function clearFilter() {
+    filterMode.value = null
+    filteredServers.value = []
+    searchKeyword.value = ''
+    searchResults.value = null
+    currentNode.value = null
+    currentContent.value = { containers: [], gpus: [], services: [] }
+  }
+
+  // 是否处于筛选模式
+  const isFilterMode = computed(() => filterMode.value !== null)
+
+  // ========== 搜索功能 ==========
+  const searchKeyword = ref('')
+  const searchResults = ref(null)
+
+  // 设置搜索结果
+  function setSearchResults(results, keyword) {
+    searchKeyword.value = keyword
+    searchResults.value = results
+    filterMode.value = 'search'
+
+    // 将搜索结果中的服务器设置为筛选结果
+    filteredServers.value = results.servers || []
+
+    // 设置当前节点为搜索模式
+    currentPath.value = []
+    currentNode.value = {
+      id: 'search-results',
+      name: `搜索: "${keyword}"`,
+      type: 'filter',
+      filterType: 'search',
+      searchKeyword: keyword
+    }
+
+    // 将其他搜索结果放入内容区
+    currentContent.value = {
+      containers: results.containers || [],
+      gpus: [],
+      services: results.services || []
+    }
+  }
+
+  // 清除搜索
+  function clearSearch() {
+    searchKeyword.value = ''
+    searchResults.value = null
+    if (filterMode.value === 'search') {
+      filterMode.value = null
+      filteredServers.value = []
+      currentNode.value = null
+      currentContent.value = { containers: [], gpus: [], services: [] }
+    }
+  }
+
+  // 是否处于搜索模式
+  const isSearchMode = computed(() => filterMode.value === 'search')
+
   return {
     // 状态
     currentPath,
@@ -725,6 +852,12 @@ export const useExplorerStore = defineStore('explorer', () => {
     preferences,
     datacenters,
     environments,
+    filterMode,
+    filteredServers,
+    isFilterMode,
+    searchKeyword,
+    searchResults,
+    isSearchMode,
 
     // 计算属性
     breadcrumbPath,
@@ -756,6 +889,11 @@ export const useExplorerStore = defineStore('explorer', () => {
     setPanelWidth,
     loadQuickAccess,
     findNodeById,
-    getNodeIcon
+    getNodeIcon,
+    filterByOffline,
+    filterByHighLoad,
+    clearFilter,
+    setSearchResults,
+    clearSearch
   }
 })

@@ -18,5 +18,14 @@ export const authApi = {
       old_password: oldPassword,
       new_password: newPassword
     })
+  },
+
+  // 用户偏好
+  getPreferences() {
+    return request.get('/user/preferences')
+  },
+
+  updatePreferences(preferences) {
+    return request.put('/user/preferences', preferences)
   }
 }

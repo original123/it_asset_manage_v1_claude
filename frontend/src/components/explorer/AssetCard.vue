@@ -259,11 +259,18 @@ function handleDrop(e) {
   border: 1px solid #e4e7ed;
   border-radius: 8px;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
 
   &:hover {
-    border-color: #c0c4cc;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    border-color: #409EFF;
+    box-shadow: 0 4px 12px rgba(64, 158, 255, 0.15);
+    transform: translateY(-2px);
+  }
+
+  &:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 6px rgba(64, 158, 255, 0.1);
   }
 
   &.selected {
