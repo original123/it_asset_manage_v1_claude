@@ -90,7 +90,7 @@ class Server(db.Model):
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }
         if include_children:
-            data['containers'] = [c.to_dict() for c in self.containers]
+            data['containers'] = [c.to_dict(include_children=True) for c in self.containers]
             data['gpus'] = [g.to_dict() for g in self.gpus]
         return data
 
